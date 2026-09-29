@@ -1,0 +1,10 @@
+import { chromium } from '@playwright/test';
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1440, height: 860 } });
+await page.goto('http://localhost:3100/');
+await page.waitForSelector('[data-testid="grid-canvas"]');
+await page.waitForTimeout(500);
+console.log(await page.evaluate(() => [window.__gridEval, window.__vpset, document.querySelectorAll('[data-grid-root]').length, document.querySelectorAll('script[src*="862"]').length]));
+await page.mouse.click(250, 229);
+console.log(await page.evaluate(() => JSON.stringify(window.__dbg0)));
+await browser.close();

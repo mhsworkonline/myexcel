@@ -44,6 +44,17 @@ export function getViewport(): Viewport | null {
   return currentVp;
 }
 
+let gridRootEl: HTMLElement | null = null;
+/** Viewport for event handling; built on demand if no frame has been drawn yet (first load). */
+function vpNow(): Viewport | null {
+  if (currentVp) return currentVp;
+  if (!gridRootEl) return null;
+  const r = gridRootEl.getBoundingClientRect();
+  const sheet = S().wb.activeSheet;
+  currentVp = buildViewport(sheet, Math.max(50, Math.floor(r.width)), Math.max(50, Math.floor(r.height)), getScroll(sheet.id));
+  return currentVp;
+}
+
 export let invalidOverlay: Set<string> | null = null;
 export function toggleInvalidCircles(on: boolean): void {
   if (!on) invalidOverlay = null;
@@ -165,6 +176,7 @@ export function Grid() {
   useLayoutEffect(() => {
     const el = rootRef.current;
     if (!el) return;
+    gridRootEl = el;
     const ro = new ResizeObserver(() => {
       const r = el.getBoundingClientRect();
       setSize({ w: Math.max(50, Math.floor(r.width)), h: Math.max(50, Math.floor(r.height)) });
@@ -201,7 +213,7 @@ export function Grid() {
     (axis: 'x' | 'y', value: number) => {
       const sheet = S().wb.activeSheet;
       const sc = getScroll(sheet.id);
-      const vp = currentVp;
+      const vp = vpNow();
       const L = axis === 'x' ? sheetLayout(sheet).cols : sheetLayout(sheet).rows;
       const z = sheet.zoom / 100;
       const max = L.offset(L.count) * z - (vp ? (axis === 'x' ? vp.colPanes[vp.colPanes.length - 1].size : vp.rowPanes[vp.rowPanes.length - 1].size) : 0);
@@ -258,7 +270,7 @@ export function Grid() {
       }
       // Excel scrolls 3 rows per notch
       if (e.deltaMode === 0 && Math.abs(dy) >= 100 && Number.isInteger(dy)) dy = Math.sign(dy) * 60 * (sheet.zoom / 100);
-      const vp = currentVp;
+      const vp = vpNow();
       const splitPane = vp && vp.split && lastPointer.current ? vp : null;
       if (splitPane && lastPointer.current) {
         const { x, y } = lastPointer.current;
@@ -300,7 +312,7 @@ export function Grid() {
   };
 
   const fillHandleHit = (x: number, y: number): boolean => {
-    const vp = currentVp;
+    const vp = vpNow();
     const st = S();
     if (!vp || st.sel.ranges.length !== 1) return false;
     const rg = primaryRange(st.sel);
@@ -312,7 +324,7 @@ export function Grid() {
   };
 
   const selectionBorderHit = (x: number, y: number, hit: Hit): boolean => {
-    const vp = currentVp;
+    const vp = vpNow();
     const st = S();
     if (!vp || st.sel.ranges.length !== 1 || hit.area !== 'cell') return false;
     const rg = primaryRange(st.sel);
@@ -328,7 +340,7 @@ export function Grid() {
   const filterButtonHit = (x: number, y: number, hit: Hit): number | null => {
     const st = S();
     const sheet = st.wb.activeSheet;
-    const vp = currentVp;
+    const vp = vpNow();
     if (!vp || hit.area !== 'cell') return null;
     const check = (rg: Range, c: number) => {
       const R = rangeRect(vp, rg.r1, c, rg.r1, c);
@@ -352,7 +364,7 @@ export function Grid() {
   const listArrowHit = (x: number, y: number): boolean => {
     const st = S();
     const sheet = st.wb.activeSheet;
-    const vp = currentVp;
+    const vp = vpNow();
     if (!vp) return false;
     const a = st.sel.active;
     const dv = validationAt(sheet, a.r, a.c);
@@ -367,7 +379,7 @@ export function Grid() {
   const updateDrag = useCallback(
     (x: number, y: number, e?: { ctrlKey?: boolean; altKey?: boolean }) => {
       const d = dragRef.current;
-      const vp = currentVp;
+      const vp = vpNow();
       if (!d || !vp) return;
       const st = S();
       const sheet = st.wb.activeSheet;
@@ -480,7 +492,7 @@ export function Grid() {
     if (autoScrollTimer.current !== null) return;
     autoScrollTimer.current = window.setInterval(() => {
       const p = lastPointer.current;
-      const vp = currentVp;
+      const vp = vpNow();
       const d = dragRef.current;
       if (!p || !vp || !d || d.kind === 'colResize' || d.kind === 'rowResize' || d.kind === 'split') return;
       const sheet = S().wb.activeSheet;
@@ -513,7 +525,7 @@ export function Grid() {
   // ---------- pointer events ----------
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button === 2) return; // context menu handles
-    const vp = currentVp;
+    const vp = vpNow();
     if (!vp) return;
     const { x, y } = localXY(e);
     lastPointer.current = { x, y };
@@ -670,7 +682,7 @@ export function Grid() {
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
-    const vp = currentVp;
+    const vp = vpNow();
     if (!vp) return;
     const { x, y } = localXY(e);
     lastPointer.current = { x, y };
@@ -741,7 +753,7 @@ export function Grid() {
         const t = d.target;
         if (t.r1 !== d.src.r1 || t.r2 !== d.src.r2 || t.c1 !== d.src.c1 || t.c2 !== d.src.c2) {
           autoFill(d.src, t, 'auto', d.ctrl);
-          const vp = currentVp;
+          const vp = vpNow();
           if (vp) {
             const R = rangeRect(vp, t.r2, t.c2, t.r2, t.c2);
             if (R) setFillOpts({ x: R.x + R.w + 2, y: R.y + R.h + 2, src: d.src, target: t });
@@ -779,7 +791,7 @@ export function Grid() {
   const focusInputSoon = () => setTimeout(() => focusInput(), 0);
 
   const onDoubleClick = (e: React.MouseEvent) => {
-    const vp = currentVp;
+    const vp = vpNow();
     if (!vp) return;
     const { x, y } = localXY(e);
     const hit = hitTest(vp, x, y);
@@ -824,7 +836,7 @@ export function Grid() {
 
   const onContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
-    const vp = currentVp;
+    const vp = vpNow();
     if (!vp) return;
     const { x, y } = localXY(e);
     const hit = hitTest(vp, x, y);

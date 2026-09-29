@@ -226,6 +226,27 @@ export function applyCommittedText(sheet: Sheet, r0: number, c0: number, text: s
   });
 }
 
+// Excel: after Tab, Tab, Enter the active cell returns to the column where tabbing started.
+let tabAnchor: { r: number; c: number } | null = null;
+export function resetTabAnchor(): void {
+  tabAnchor = null;
+}
+
+/** Returns the Enter target when a Tab sequence is in progress, updating the anchor. */
+export function tabAwareMove(from: { r: number; c: number }, move: MoveDir): { r: number; c: number } | null {
+  if (move === 'right') {
+    if (!tabAnchor || tabAnchor.r !== from.r) tabAnchor = { ...from };
+    return null;
+  }
+  if (move === 'down' && tabAnchor && tabAnchor.r === from.r) {
+    const t = { r: from.r + 1, c: tabAnchor.c };
+    tabAnchor = null;
+    return t;
+  }
+  if (move !== 'left') tabAnchor = null;
+  return null;
+}
+
 function moveAfterCommit(move: MoveDir, sel: Selection): void {
   const st = S();
   const sheet = st.wb.activeSheet;
@@ -240,7 +261,8 @@ function moveAfterCommit(move: MoveDir, sel: Selection): void {
   let next: Selection;
   if (multi) next = cycleActive(sheet, sel, dr, dc);
   else {
-    const a = step(sheet, sel.active, dr, dc);
+    const back = tabAwareMove(sel.active, move);
+    const a = back ?? step(sheet, sel.active, dr, dc);
     next = singleSel(a.r, a.c);
   }
   setState({ sel: next });

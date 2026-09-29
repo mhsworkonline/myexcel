@@ -18,7 +18,7 @@ export interface EditState {
   mode: 'enter' | 'edit';
   fromBar: boolean;
   /** Reference being inserted by pointing (text span it occupies). */
-  point?: { start: number; end: number; anchor: CellAddr; sheetId: string };
+  point?: { start: number; end: number; anchor: CellAddr; corner: CellAddr; sheetId: string };
   /** Sheet id the formula is being edited on (for cross-sheet pointing). */
   hostSheetId: string;
 }

@@ -1,0 +1,494 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --chrome-bg: #f3f3f3;
+  --title-bg: #f3f3f3;
+  --ribbon-bg: #ffffff;
+  --panel: #ffffff;
+  --text: #242424;
+  --muted: #616161;
+  --accent: #107c41;
+  --accent-hover: #0e6b38;
+  --accent-soft: #e6f2ea;
+  --border: #e0e0e0;
+  --border-strong: #c8c8c8;
+  --hover: #ebebeb;
+  --pressed: #e0e0e0;
+  --checked: #e1e1e1;
+  --checked-border: #bdbdbd;
+  --input-bg: #ffffff;
+  --grid-bg: #ffffff;
+  --cell-text: #000000;
+  --tooltip-bg: #ffffff;
+  --note-bg: #ffffe1;
+  --menu-bg: #ffffff;
+  --menu-hover: #f0f0f0;
+  --scroll-track: #f3f3f3;
+  --scroll-thumb: #c2c2c2;
+  --scroll-thumb-hover: #a6a6a6;
+  --tab-active-bg: #ffffff;
+  --dialog-bg: #ffffff;
+  --dialog-title: #ffffff;
+  --shadow: 0 2px 6px rgba(0, 0, 0, 0.14), 0 0 1px rgba(0, 0, 0, 0.2);
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --chrome-bg: #1f1f1f;
+  --title-bg: #1f1f1f;
+  --ribbon-bg: #292929;
+  --panel: #292929;
+  --text: #f0f0f0;
+  --muted: #b3b3b3;
+  --accent: #3fb871;
+  --accent-hover: #52c47f;
+  --accent-soft: #1c3a29;
+  --border: #3d3d3d;
+  --border-strong: #5a5a5a;
+  --hover: #3a3a3a;
+  --pressed: #454545;
+  --checked: #474747;
+  --checked-border: #6a6a6a;
+  --input-bg: #1f1f1f;
+  --grid-bg: #1f1f1f;
+  --cell-text: #e8e8e8;
+  --tooltip-bg: #2b2b2b;
+  --note-bg: #fffbc7;
+  --menu-bg: #2b2b2b;
+  --menu-hover: #3d3d3d;
+  --scroll-track: #1f1f1f;
+  --scroll-thumb: #5a5a5a;
+  --scroll-thumb-hover: #7a7a7a;
+  --tab-active-bg: #292929;
+  --dialog-bg: #2b2b2b;
+  --dialog-title: #2b2b2b;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.5), 0 0 1px rgba(0, 0, 0, 0.6);
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--chrome-bg);
+  color: var(--text);
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 12px;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* ---------- ribbon ---------- */
+.xl-tab {
+  position: relative;
+  height: 30px;
+  padding: 0 9px;
+  font-size: 13px;
+  color: var(--text);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.xl-tab:hover {
+  background: var(--hover);
+}
+.xl-tab-active {
+  color: var(--accent);
+  font-weight: 600;
+}
+.xl-tab-active::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 2px;
+  width: calc(100% - 18px);
+  max-width: 44px;
+  min-width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.xl-ribbon {
+  background: var(--ribbon-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+.xl-group {
+  display: flex;
+  flex-direction: column;
+  padding: 3px 6px 0 6px;
+  position: relative;
+}
+.xl-group + .xl-group::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: var(--border);
+}
+.xl-group-label {
+  height: 18px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.xl-launcher {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  color: var(--muted);
+}
+.xl-launcher:hover {
+  background: var(--hover);
+}
+.xl-btn-lg {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 42px;
+  height: 70px;
+  padding: 3px 3px 1px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  line-height: 14px;
+  text-align: center;
+}
+.xl-btn-lg:hover,
+.xl-btn-sm:hover,
+.xl-split:hover {
+  background: var(--hover);
+}
+.xl-btn-sm {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 3px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.xl-btn-checked {
+  background: var(--checked) !important;
+  border-color: var(--checked-border);
+}
+.xl-split {
+  display: flex;
+  align-items: stretch;
+  border-radius: 3px;
+  border: 1px solid transparent;
+}
+.xl-split > button {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+.xl-split > button:hover {
+  background: var(--pressed);
+}
+.xl-combo {
+  height: 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--input-bg);
+  display: flex;
+  align-items: center;
+}
+.xl-combo input {
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: 0 4px;
+  min-width: 0;
+  flex: 1;
+  font-size: 12px;
+}
+.xl-combo:hover {
+  border-color: var(--muted);
+}
+.xl-combo:focus-within {
+  border-color: var(--accent);
+}
+
+/* ---------- menus & popups ---------- */
+.xl-menu {
+  background: var(--menu-bg);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+}
+.xl-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 12px 0 4px;
+  margin: 0 4px;
+  border-radius: 4px;
+  cursor: default;
+}
+.xl-menu-item:hover,
+.xl-menu-item-open {
+  background: var(--menu-hover);
+}
+.xl-menu-icon {
+  width: 24px;
+  display: inline-flex;
+  justify-content: center;
+  color: var(--muted);
+}
+.xl-menu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+.xl-menu-header {
+  font-weight: 600;
+  padding: 4px 10px;
+  background: var(--chrome-bg);
+  font-size: 12px;
+}
+.xl-popup {
+  background: var(--menu-bg);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+  color: var(--text);
+}
+.xl-item-active {
+  background: var(--accent-soft);
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* ---------- buttons & inputs ---------- */
+.xl-btn {
+  min-width: 72px;
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--panel);
+  font-size: 12px;
+}
+.xl-btn:hover {
+  background: var(--hover);
+}
+.xl-btn:disabled {
+  opacity: 0.5;
+}
+.xl-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.xl-btn-primary:hover {
+  background: var(--accent-hover);
+}
+.xl-input {
+  height: 24px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  padding: 0 6px;
+  background: var(--input-bg);
+  outline: none;
+  font-size: 12px;
+}
+.xl-input:focus {
+  border-color: var(--accent);
+  box-shadow: inset 0 -1px 0 var(--accent);
+}
+select.xl-input {
+  padding: 0 2px;
+}
+.xl-fieldset {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 10px 10px;
+  margin: 0;
+}
+.xl-fieldset > legend {
+  padding: 0 4px;
+  color: var(--muted);
+}
+.xl-list {
+  border: 1px solid var(--border-strong);
+  background: var(--input-bg);
+  overflow: auto;
+}
+.xl-list > div {
+  padding: 1px 6px;
+  cursor: default;
+  white-space: nowrap;
+}
+.xl-list > div:hover {
+  background: var(--menu-hover);
+}
+.xl-list > .xl-list-sel {
+  background: var(--accent-soft);
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* ---------- dialog ---------- */
+.xl-dialog {
+  background: var(--dialog-bg);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 12px;
+}
+.xl-dialog-title {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 0 6px 0 14px;
+  font-size: 13px;
+  cursor: move;
+  user-select: none;
+}
+.xl-dtab {
+  padding: 5px 10px;
+  border-bottom: 2px solid transparent;
+}
+.xl-dtab-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---------- scrollbars & tabs ---------- */
+.xl-scroll-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  background: var(--scroll-track);
+}
+.xl-scroll-btn:hover {
+  background: var(--hover);
+}
+.xl-vscroll,
+.xl-hscroll {
+  background: var(--scroll-track);
+}
+.xl-vscroll {
+  border-left: 1px solid var(--border);
+}
+.xl-scroll-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 6px;
+}
+.xl-scroll-thumb:hover {
+  background: var(--scroll-thumb-hover);
+}
+.xl-sheet-tab {
+  position: relative;
+  height: 100%;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  border-right: 1px solid transparent;
+  cursor: default;
+}
+.xl-sheet-tab:hover {
+  background: var(--hover);
+}
+.xl-sheet-tab-active {
+  background: var(--tab-active-bg);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.xl-sheet-tab-active::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent);
+}
+
+.xl-color-cell {
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+.xl-color-cell:hover {
+  outline: 1px solid #f29436;
+  outline-offset: 0;
+  border-color: #fff;
+}
+
+.xl-gallery-item:hover {
+  outline: 2px solid var(--accent);
+}
+
+.xl-status-btn {
+  width: 26px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  color: var(--muted);
+}
+.xl-status-btn:hover {
+  background: var(--hover);
+}
+.xl-status-btn-active {
+  background: var(--checked);
+  color: var(--text);
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #print-root,
+  #print-root * {
+    visibility: visible;
+  }
+  #print-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+}

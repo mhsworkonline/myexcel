@@ -169,6 +169,8 @@ export function cancelEdit(): void {
 
 export type MoveDir = 'down' | 'up' | 'right' | 'left' | 'none';
 
+let warnedCircular = false;
+
 /** Commits the in-cell edit. Returns false if the edit stays open (invalid formula / validation). */
 export function commitEdit(move: MoveDir = 'down', opts: { fillSelection?: boolean; array?: boolean } = {}): boolean {
   const st = S();
@@ -196,6 +198,13 @@ export function commitEdit(move: MoveDir = 'down', opts: { fillSelection?: boole
   applyCommittedText(sheet, ed.r, ed.c, text, hostSel, opts);
   setState({ edit: null });
   moveAfterCommit(move, hostSel);
+  if (text.startsWith('=')) {
+    const v = st.engine.getValue(sheet, ed.r, ed.c);
+    if (v && typeof v === 'object' && 'circular' in v && v.circular && !warnedCircular) {
+      warnedCircular = true;
+      alertBox('There are one or more circular references where a formula refers to its own cell either directly or indirectly. This might cause them to calculate incorrectly.\n\nTry removing or changing these references, or moving the formulas to different cells.', 'MyExcel', 'warning');
+    }
+  }
   return true;
 }
 

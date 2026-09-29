@@ -100,6 +100,10 @@ export function Menu({ items, x, y, onClose, minWidth = 200, level = 0 }: Props)
               }
               onClose();
               it.onClick?.();
+              setTimeout(() => {
+                const a = document.activeElement as HTMLElement | null;
+                if (!a || a === document.body || a.tagName === 'BUTTON') import('./grid/focus').then((m) => m.focusGrid());
+              }, 0);
             }}
           >
             <span className="xl-menu-icon">{it.checked ? <Check size={14} /> : it.icon}</span>

@@ -59,7 +59,7 @@ export function StatusBar() {
   const stats = useSelectionStats();
   const sheet = S().wb.activeSheet;
   const zoom = sheet.zoom;
-  const circ = S().engine.circular;
+  const circ = S().engine.findCircular(sheet);
   let mode = 'Ready';
   if (edit) mode = canPoint() ? 'Point' : edit.mode === 'enter' ? 'Enter' : 'Edit';
   const setZoom = (z: number) => {

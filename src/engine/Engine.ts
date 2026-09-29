@@ -264,6 +264,32 @@ export class Engine implements WorkbookListener {
     return v as CellValue;
   }
 
+  private circCache: { rev: number; sheetId: string; hit: { sheet: string; r: number; c: number } | null } | null = null;
+
+  /** First formula cell on `sheet` caught in a circular reference (for the status bar). */
+  findCircular(sheet: Sheet): { sheet: string; r: number; c: number } | null {
+    if (!this.hf) return null;
+    if (this.circCache && this.circCache.rev === this.rev && this.circCache.sheetId === sheet.id) return this.circCache.hit;
+    const sid = this.sid(sheet);
+    let hit: { sheet: string; r: number; c: number } | null = null;
+    let n = 0;
+    if (sid !== undefined) {
+      outer: for (const [r, row] of sheet.rows) {
+        for (const [c, cell] of row) {
+          if (!cell.f) continue;
+          if (++n > 50000) break outer;
+          const v = this.hf.getCellValue({ sheet: sid, row: r, col: c });
+          if (v instanceof DetailedCellError && v.type === 'CYCLE') {
+            hit = { sheet: sheet.name, r, c };
+            break outer;
+          }
+        }
+      }
+    }
+    this.circCache = { rev: this.rev, sheetId: sheet.id, hit };
+    return hit;
+  }
+
   /** Detailed type used to auto-apply date/percent/currency formats to formula results. */
   valueType(sheet: Sheet, r: number, c: number): string | undefined {
     if (!this.hf) return undefined;

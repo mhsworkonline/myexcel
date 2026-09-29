@@ -12,6 +12,7 @@ import { handleEditKey } from './grid/editKeys';
 import { FormulaHighlight } from './grid/FormulaHighlight';
 import { ArgHint, AutoList, useFormulaAssist } from './grid/useFormulaAssist';
 import { Menu } from './Menu';
+import { focusGrid } from './grid/focus';
 
 function nameBoxText(): string {
   const st = S();
@@ -70,6 +71,7 @@ export function NameBox() {
           if (e.key === 'Enter') {
             commit((e.target as HTMLInputElement).value);
             (e.target as HTMLInputElement).blur();
+            focusGrid();
           } else if (e.key === 'Escape') {
             setText(null);
             (e.target as HTMLInputElement).blur();

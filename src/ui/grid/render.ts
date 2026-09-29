@@ -511,6 +511,7 @@ function drawPane(ctx: CanvasRenderingContext2D, rs: RenderState, cp: Pane, rp: 
   const ph = rp.size;
   if (pw <= 0 || ph <= 0) return;
   ctx.save();
+  currentFont = ''; // save/restore resets ctx.font behind the cache's back
   ctx.beginPath();
   ctx.rect(px, py, pw, ph);
   ctx.clip();
@@ -783,6 +784,7 @@ function drawPane(ctx: CanvasRenderingContext2D, rs: RenderState, cp: Pane, rp: 
 
   drawOverlays(ctx, rs, cp, rp, r0, r1, c0, c1);
   ctx.restore();
+  currentFont = '';
 }
 
 function drawBar(ctx: CanvasRenderingContext2D, bar: NonNullable<CFResult['bar']>, x: number, y: number, w: number, h: number, z: number): void {
@@ -1149,6 +1151,7 @@ function drawColHeaders(ctx: CanvasRenderingContext2D, rs: RenderState, cp: Pane
   ctx.fillStyle = pal.headerLine;
   ctx.fillRect(cp.start, vp.hh - g, cp.size, g);
   ctx.restore();
+  currentFont = '';
   ctx.textAlign = 'left';
 }
 
@@ -1203,6 +1206,7 @@ function drawRowHeaders(ctx: CanvasRenderingContext2D, rs: RenderState, rp: Pane
   ctx.fillStyle = pal.headerLine;
   ctx.fillRect(vp.hw - g, rp.start, g, rp.size);
   ctx.restore();
+  currentFont = '';
   ctx.textAlign = 'left';
 }
 

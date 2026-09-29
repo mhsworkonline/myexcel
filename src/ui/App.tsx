@@ -14,6 +14,7 @@ import { SheetTabs } from './SheetTabs';
 import { StatusBar } from './StatusBar';
 import { TitleBar } from './TitleBar';
 import { installPhase3 } from './phase3';
+import { focusGrid } from './grid/focus';
 
 let booted = false;
 
@@ -38,6 +39,21 @@ function boot(): void {
   checkRecovery();
   // expose a tiny test hook for automation
   (window as unknown as { __myexcel?: unknown }).__myexcel = { S, openFromData };
+  // Action modules for automation / debugging
+  Promise.all([
+    import('../state/actions/edit'),
+    import('../state/actions/format'),
+    import('../state/actions/structure'),
+    import('../state/actions/sortFilter'),
+    import('../state/actions/fill'),
+    import('../state/actions/data'),
+    import('../state/actions/find'),
+    import('../state/actions/formulas'),
+    import('../state/store'),
+    import('../state/values'),
+  ]).then(([edit, format, structure, sortFilter, fill, data, find, formulas, store, values]) => {
+    Object.assign((window as unknown as { __myexcel: object }).__myexcel, { edit, format, structure, sortFilter, fill, data, find, formulas, store, values });
+  });
 }
 
 export function App() {
@@ -76,7 +92,20 @@ export function App() {
       if (e.key === 'Escape' && st.backstage) setState({ backstage: false });
     };
     window.addEventListener('keydown', onKey);
+    // After clicking a ribbon/QAT button, give focus back to the grid like Excel
+    const onClick = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest('button') || t.closest('[role=dialog]') || t.closest('[data-menu]')) return;
+      setTimeout(() => {
+        const st = S();
+        const a = document.activeElement as HTMLElement | null;
+        if (st.edit || st.dialog || st.backstage) return;
+        if (!a || a === document.body || a.tagName === 'BUTTON') focusGrid();
+      }, 0);
+    };
+    window.addEventListener('click', onClick, true);
     return () => {
+      window.removeEventListener('click', onClick, true);
       window.removeEventListener('beforeunload', beforeUnload);
       window.removeEventListener('drop', onDrop);
       window.removeEventListener('dragover', onDragOver);

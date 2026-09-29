@@ -67,6 +67,8 @@ export function Grid() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [size, setSize] = useState({ w: 800, h: 400 });
+  const sizeRef = useRef(size);
+  sizeRef.current = size;
   const dragRef = useRef<Drag | null>(null);
   const fillPreview = useRef<Range | null>(null);
   const lastPointer = useRef<{ x: number; y: number } | null>(null);
@@ -96,6 +98,7 @@ export function Grid() {
     const st = S();
     const sheet = st.wb.activeSheet;
     const scroll = getScroll(sheet.id);
+    const size = sizeRef.current;
     const vp = buildViewport(sheet, size.w, size.h, scroll);
     currentVp = vp;
     const dpr = window.devicePixelRatio || 1;
@@ -146,7 +149,16 @@ export function Grid() {
     const mainRows = vp.rowPanes[vp.rowPanes.length - 1];
     const mainCols = vp.colPanes[vp.colPanes.length - 1];
     setViewportSize(Math.floor(mainRows.size / (20 * vp.z)), Math.floor(mainCols.size / (64 * vp.z)));
-  }, [size]);
+  }, []);
+
+  // Redraw synchronously when the element is resized so the bitmap never shows stretched.
+  useLayoutEffect(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    draw();
+  }, [size, draw]);
 
   const schedule = useCallback(() => {
     if (rafRef.current === null) rafRef.current = requestAnimationFrame(draw);
@@ -191,7 +203,7 @@ export function Grid() {
       const st = S();
       const sheet = st.wb.activeSheet;
       const sc = getScroll(sheet.id);
-      const vp = currentVp ?? buildViewport(sheet, size.w, size.h, sc);
+      const vp = currentVp ?? buildViewport(sheet, sizeRef.current.w, sizeRef.current.h, sc);
       const z = vp.z;
       const used = sheet.usedRange();
       const pane = axis === 'x' ? vp.colPanes[vp.colPanes.length - 1] : vp.rowPanes[vp.rowPanes.length - 1];
@@ -206,7 +218,7 @@ export function Grid() {
       const total = Math.min(hardMax, Math.max(usedEnd + view * 0.5, selEnd + view * 0.5, pos + view * 1.2, view * 2));
       return { pos, view, total };
     },
-    [size],
+    [],
   );
 
   const setScrollAxis = useCallback(

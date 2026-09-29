@@ -1,0 +1,35 @@
+import { chromium } from '@playwright/test';
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1440, height: 860 } });
+const errors = [];
+page.on('pageerror', (e) => errors.push(String(e.stack || e)));
+await page.goto('http://localhost:3100/');
+await page.waitForFunction(() => window.__myexcel && window.__myexcel.data);
+await page.evaluate(() => {
+  const X = window.__myexcel;
+  const sh = () => X.S().wb.activeSheet;
+  const put = (r, c, t) => X.store.transact('t', (tx) => X.edit.writeInput(tx, sh(), r, c, t));
+  const vals = [45, 12, 88, 67, 23, 95, 51, 5, 73, 34];
+  ['Score', 'Bars', 'Scale', 'Icons', 'Status'].forEach((h, i) => put(0, i, h));
+  vals.forEach((v, i) => { for (let c = 0; c < 4; c++) put(i + 1, c, String(v)); put(i + 1, 4, v > 50 ? 'Yes' : 'No'); });
+  X.data.addCFRule({ type: 'cellIs', operator: 'greaterThan', formulas: ['=60'], style: { fillColor: '#C6EFCE', fontColor: '#006100' }, ranges: [{ r1: 1, c1: 0, r2: 10, c2: 0 }] });
+  X.data.addCFRule({ type: 'top10', rank: 2, bottom: true, style: { fillColor: '#FFC7CE', fontColor: '#9C0006' }, ranges: [{ r1: 1, c1: 0, r2: 10, c2: 0 }] });
+  X.data.addCFRule({ type: 'dataBar', dataBar: { color: '#638EC6', gradient: true, min: { type: 'autoMin' }, max: { type: 'autoMax' }, showValue: true }, ranges: [{ r1: 1, c1: 1, r2: 10, c2: 1 }] });
+  X.data.addCFRule({ type: 'colorScale', colorScale: { cfvos: [{ type: 'min' }, { type: 'percentile', value: 50 }, { type: 'max' }], colors: ['#F8696B', '#FFEB84', '#63BE7B'] }, ranges: [{ r1: 1, c1: 2, r2: 10, c2: 2 }] });
+  X.data.addCFRule({ type: 'iconSet', iconSet: { set: '3TrafficLights1', cfvos: [{ type: 'percent', value: 0 }, { type: 'percent', value: 33 }, { type: 'percent', value: 67 }], showValue: true }, ranges: [{ r1: 1, c1: 3, r2: 10, c2: 3 }] });
+  X.data.setValidation({ type: 'list', formula1: 'Yes,No,Maybe', allowBlank: true, showDropdown: true, showInput: true, promptTitle: 'Status', prompt: 'Pick from the list', showError: true, errorStyle: 'stop' }, [{ r1: 1, c1: 4, r2: 10, c2: 4 }]);
+  // table
+  const tdata = [['Product', 'Q1', 'Q2'], ['Widget', '100', '120'], ['Gadget', '80', '95'], ['Doohickey', '60', '75'], ['Gizmo', '40', '55']];
+  tdata.forEach((row, i) => row.forEach((v, j) => put(i, 7 + j, v)));
+  X.data.createTable({ r1: 0, c1: 7, r2: 4, c2: 9 }, true, 'TableStyleMedium2');
+  X.data.updateTable(sh().tables[0].id, { totalRow: true });
+  X.data.setNote(12, 0, { text: 'Scores above 60 pass.', author: 'Me' });
+  X.store.setState({ sel: { ranges: [{ r1: 3, c1: 4, r2: 3, c2: 4 }], active: { r: 3, c: 4 }, anchor: { r: 3, c: 4 } } });
+});
+await page.waitForTimeout(300);
+await page.screenshot({ path: 'screenshots/phase2.png' });
+await page.keyboard.press('Alt+ArrowDown');
+await page.waitForTimeout(300);
+await page.screenshot({ path: 'screenshots/phase2-list.png', clip: { x: 0, y: 190, width: 700, height: 350 } });
+if (errors.length) console.log('ERRORS\n' + errors.join('\n'));
+await browser.close();

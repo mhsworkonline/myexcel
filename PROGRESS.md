@@ -20,14 +20,14 @@ Resume guide: `npm install`, `npm run build`, `./scripts/restart.sh` (serves :31
 - [x] sheets: add/rename/delete/move/copy/color/hide; insert/delete rows/cols/cells; hide/unhide; autofit
 - [x] tests: xlsx+csv round-trip, undo/redo (6 tests, ~2s); Playwright smoke passes
 
-## Phase 2 – Data tools
+## Phase 2 – Data tools  ✅
 - [x] conditional formatting engine + renderer (highlight, top/bottom, averages, duplicates, text/date, data bars, color scales, icon sets, formula rules) + quick-rule dialogs, new/edit rule, rule manager
 - [x] data validation (list dropdown, number/date/time/text-length/custom, input messages, stop/warning/info alerts, circle invalid)
 - [x] named ranges + Name Manager + create from selection + name box define
 - [x] notes / threaded comments, hyperlinks
 - [x] tables (styles gallery, banding, total row, Table Design tab, auto-expand), Remove Duplicates, Text to Columns wizard, paste transpose
 - [x] cell locking + sheet protection (password hash, allow-list)
-- [ ] visual verification pass + smoke test at end of phase
+- [x] visual verification pass + smoke test at end of phase
 
 ## Phase 3 – Analysis & output
 - [ ] pivot tables (field list, filters, grouping, calculated fields, refresh)

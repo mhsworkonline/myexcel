@@ -13,11 +13,14 @@
   "dependencies": {
     "exceljs": "^4.4.0",
     "hyperformula": "^3.4.0",
+    "jspdf": "^4.2.1",
+    "jszip": "^3.10.2",
     "lucide-react": "^1.48.0",
     "next": "^15.5.26",
     "papaparse": "^5.7.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zustand": "^5.0.15"
   },
   "devDependencies": {

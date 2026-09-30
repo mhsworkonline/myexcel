@@ -15,6 +15,8 @@ import { StatusBar } from './StatusBar';
 import { TitleBar } from './TitleBar';
 import { installPhase3 } from './phase3';
 import { focusGrid } from './grid/focus';
+import { PivotPanel } from './pivot/PivotPanel';
+import { pivotAt } from '../state/pivot';
 
 let booted = false;
 
@@ -51,8 +53,12 @@ function boot(): void {
     import('../state/actions/formulas'),
     import('../state/store'),
     import('../state/values'),
-  ]).then(([edit, format, structure, sortFilter, fill, data, find, formulas, store, values]) => {
-    Object.assign((window as unknown as { __myexcel: object }).__myexcel, { edit, format, structure, sortFilter, fill, data, find, formulas, store, values });
+    import('../state/pivot'),
+    import('../state/charts'),
+    import('../state/whatif'),
+    import('../state/print'),
+  ]).then(([edit, format, structure, sortFilter, fill, data, find, formulas, store, values, pivot, charts, whatif, print]) => {
+    Object.assign((window as unknown as { __myexcel: object }).__myexcel, { edit, format, structure, sortFilter, fill, data, find, formulas, store, values, pivot, charts, whatif, print });
   });
 }
 
@@ -104,7 +110,20 @@ export function App() {
       }, 0);
     };
     window.addEventListener('click', onClick, true);
+    // Show the PivotTable field list when a pivot cell is selected (Excel behaviour)
+    let lastPivot: string | null = null;
+    const unsubSel = useStore.subscribe((s, prev) => {
+      if (s.sel === prev.sel && s.wb.activeSheetId === prev.wb.activeSheetId && s.rev === prev.rev) return;
+      const p = pivotAt(s.wb.activeSheet, s.sel.active.r, s.sel.active.c);
+      const id = p?.id ?? null;
+      if (id !== lastPivot) {
+        lastPivot = id;
+        if (id) setState({ pivotPanel: id });
+        else if (s.pivotPanel) setState({ pivotPanel: null });
+      }
+    });
     return () => {
+      unsubSel();
       window.removeEventListener('click', onClick, true);
       window.removeEventListener('beforeunload', beforeUnload);
       window.removeEventListener('drop', onDrop);
@@ -120,6 +139,7 @@ export function App() {
       <FormulaBar />
       <div className="flex-1 flex min-h-0" style={{ borderTop: '1px solid var(--border)' }}>
         <Grid />
+        <PivotPanel />
       </div>
       <SheetTabs />
       <StatusBar />

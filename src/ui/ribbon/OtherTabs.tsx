@@ -64,6 +64,7 @@ import { ChartColumnIcon, PivotIcon, RecommendedChartsIcon, TableIcon, AutoSumIc
 import { Col, Group, LargeButton, Row, SmallButton } from './parts';
 import { formatAsTable, TableStyleGallery } from './HomeTab';
 import { primaryRange } from '../../model/selection';
+import { insertChart } from '../../state/charts';
 import { getScroll } from '../grid/geometry';
 import { TABLE_STYLE_NAMES } from '../../state/tableStyles';
 
@@ -90,7 +91,7 @@ function setPageSetup(patch: Partial<import('../../model/types').PageSetup>, lab
 
 export function chartMenu(kinds: [string, string][]): MenuItem[] {
   return [
-    ...kinds.map(([label, type]) => ({ label, onClick: () => openDialog('insertChart', { type, quick: true }) })),
+    ...kinds.map(([label, type]) => ({ label, onClick: () => insertChart(type as import('../../model/types').ChartType) })),
     { separator: true },
     { label: 'More Charts...', onClick: () => openDialog('insertChart') },
   ];
@@ -115,8 +116,8 @@ export function InsertTab() {
             <SmallButton icon={<ChartScatter size={16} className="text-[#2B7CD3]" />} title="Insert Scatter (X, Y) Chart" menu={chartMenu([['Scatter', 'scatter']])} />
           </Row>
           <Row>
-            <SmallButton icon={<ChartBar size={16} className="text-[#70AD47]" />} title="Insert Combo Chart" onClick={() => openDialog('insertChart', { type: 'combo', quick: true })} />
-            <SmallButton icon={<ChartArea size={16} className="text-[#5B9BD5]" />} title="Insert Area Chart" onClick={() => openDialog('insertChart', { type: 'area', quick: true })} />
+            <SmallButton icon={<ChartBar size={16} className="text-[#70AD47]" />} title="Insert Combo Chart" onClick={() => insertChart('combo')} />
+            <SmallButton icon={<ChartArea size={16} className="text-[#5B9BD5]" />} title="Insert Area Chart" onClick={() => insertChart('area')} />
           </Row>
         </Col>
       </Group>
@@ -305,6 +306,9 @@ export function DataTab() {
     <>
       <Group label="Get & Transform Data">
         <LargeButton icon={<FileText size={26} className="text-[#107C41]" />} label={'From\nText/CSV'} onClick={() => import('../../state/actions/file').then((m) => m.openFile())} />
+      </Group>
+      <Group label="Queries & Connections">
+        <LargeButton icon={<RefreshCw size={26} className="text-[#107C41]" />} label={'Refresh\nAll'} onClick={() => import('../../state/pivot').then((m) => m.refreshAllPivots())} />
       </Group>
       <Group label="Sort & Filter">
         <Col>

@@ -5,18 +5,37 @@ import { tableAtActive } from '../../state/actions/data';
 import { HomeTab } from './HomeTab';
 import { DataTab, FormulasTab, InsertTab, PageLayoutTab, ReviewTab, TableDesignTab, ViewTab } from './OtherTabs';
 import { useState } from 'react';
+import { ChartDesignTab } from '../charts/chartDialogs';
+import { activePivotId, PivotAnalyzeTab, sparklineGroupAtActive, SparklineTab } from './ContextTabs';
 
 const TABS: RibbonTab[] = ['File', 'Home', 'Insert', 'Page Layout', 'Formulas', 'Data', 'Review', 'View'];
+
+function ContextTab({ name, current }: { name: string; current: string }) {
+  return (
+    <button
+      className={'xl-tab ' + (current === name ? 'xl-tab-active' : '')}
+      style={{ color: current === name ? undefined : 'var(--accent)' }}
+      onClick={() => setState({ ribbonTab: name as RibbonTab })}
+      data-testid={`tab-${name}`}
+    >
+      {name}
+    </button>
+  );
+}
 
 export function Ribbon() {
   const tab = useStore((s) => s.ribbonTab) as string;
   const collapsed = useStore((s) => s.ribbonCollapsed);
+  const chartSel = useStore((s) => s.selectedChartId);
   useStore((s) => s.sel);
   useStore((s) => s.rev);
   const [peek, setPeek] = useState(false);
   const table = tableAtActive();
+  const pivotId = activePivotId();
+  const spark = sparklineGroupAtActive();
   const showBody = !collapsed || peek;
-  const current = tab === 'Table Design' && !table ? 'Home' : tab;
+  const ctxOk = (t: string) => (t === 'Table Design' ? !!table : t === 'Chart Design' ? !!chartSel : t === 'PivotTable Analyze' ? !!pivotId : t === 'Sparkline' ? !!spark : true);
+  const current = ctxOk(tab) ? tab : 'Home';
   return (
     <div className="flex flex-col px-2 pb-1" style={{ background: 'var(--chrome-bg)' }} data-testid="ribbon">
       <div className="flex items-center h-[32px] gap-[2px]" role="tablist">
@@ -40,15 +59,10 @@ export function Ribbon() {
             {t}
           </button>
         ))}
-        {table && (
-          <button
-            className={'xl-tab ' + (current === 'Table Design' ? 'xl-tab-active' : '')}
-            style={{ color: current === 'Table Design' ? undefined : 'var(--accent)' }}
-            onClick={() => setState({ ribbonTab: 'Table Design' as RibbonTab })}
-          >
-            Table Design
-          </button>
-        )}
+        {table && <ContextTab name="Table Design" current={current} />}
+        {chartSel && <ContextTab name="Chart Design" current={current} />}
+        {pivotId && <ContextTab name="PivotTable Analyze" current={current} />}
+        {spark && <ContextTab name="Sparkline" current={current} />}
         <div className="flex-1" />
         <button className="xl-btn-sm !h-[28px] !px-2 border !border-[var(--border-strong)] rounded-[4px] mr-1" title="Comments" onClick={() => import('../../state/store').then((m) => m.openDialog('note', { edit: true, threaded: true }))}>
           <MessageSquare size={15} /> Comments
@@ -68,6 +82,9 @@ export function Ribbon() {
             {current === 'Review' && <ReviewTab />}
             {current === 'View' && <ViewTab />}
             {current === 'Table Design' && <TableDesignTab />}
+            {current === 'Chart Design' && <ChartDesignTab />}
+            {current === 'PivotTable Analyze' && <PivotAnalyzeTab />}
+            {current === 'Sparkline' && <SparklineTab />}
           </div>
           <div className="flex-1" />
           <button className="absolute right-1 bottom-1 w-5 h-5 flex items-center justify-center rounded hover:bg-[var(--hover)]" title="Collapse the Ribbon (Ctrl+F1)" onClick={() => setState({ ribbonCollapsed: !S().ribbonCollapsed })}>

@@ -37,6 +37,8 @@ export interface RenderState {
   filterButtons: boolean;
   listArrow: { r: number; c: number } | null;
   painterRange: Range | null;
+  /** Print rendering: no selection/UI overlays, gridlines per page setup, drawn at an origin offset. */
+  print?: { gridlines: boolean; origin: { x: number; y: number } };
 }
 
 let dpr = 1;
@@ -366,6 +368,7 @@ function drawCellText(ctx: CanvasRenderingContext2D, rs: RenderState, job: TextJ
   const padL = Math.round(2 * z) + (style.indent ? Math.round(style.indent * 9 * z) : 0);
   const padR = Math.round(3 * z);
   const avail = w - padL - padR;
+  let avail2 = avail;
   let d = displayOf(sheet, r, c, style, 11, rs.showFormulas);
   const numeric = typeof d.value === 'number' && !rs.showFormulas;
   // General numbers shrink precision to fit, other numbers show ####
@@ -379,7 +382,9 @@ function drawCellText(ctx: CanvasRenderingContext2D, rs: RenderState, job: TextJ
           tw = ctx.measureText(d.text).width;
         }
       }
-      if (tw > avail && !job.merged) {
+      // Excel is lenient by a couple of pixels before falling back to ####
+      if (tw > avail && tw <= w - 2) avail2 = w - 2;
+      else if (tw > avail && !job.merged) {
         const hw = ctx.measureText('#').width || 6;
         d = { ...d, text: '#'.repeat(Math.max(1, Math.floor(avail / hw))), left: undefined, right: undefined };
       }
@@ -466,7 +471,7 @@ function drawCellText(ctx: CanvasRenderingContext2D, rs: RenderState, job: TextJ
   const tw = ctx.measureText(text).width;
   let tx: number;
   if (d.hAlign === 'center') tx = x + (w - tw) / 2;
-  else if (d.hAlign === 'right') tx = x + w - padR - tw;
+  else if (d.hAlign === 'right') tx = x + w - (avail2 > avail ? 1 : padR) - tw;
   else tx = x + padL + (icon ? iconSize + 2 : 0);
   if (d.hAlign === 'right' && icon) tx = Math.max(tx, x + padL + iconSize + 2);
   const bl = baselineFor(1, 0);
@@ -527,7 +532,7 @@ function drawPane(ctx: CanvasRenderingContext2D, rs: RenderState, cp: Pane, rp: 
   const g = 1 / dpr; // one device pixel
 
   // gridlines
-  const showGrid = sheet.showGridlines;
+  const showGrid = rs.print ? rs.print.gridlines : sheet.showGridlines;
   if (showGrid) {
     ctx.fillStyle = pal.grid;
     for (let c = c0; c <= c1; c++) {
@@ -782,7 +787,7 @@ function drawPane(ctx: CanvasRenderingContext2D, rs: RenderState, cp: Pane, rp: 
     ctx.restore();
   }
 
-  drawOverlays(ctx, rs, cp, rp, r0, r1, c0, c1);
+  if (!rs.print) drawOverlays(ctx, rs, cp, rp, r0, r1, c0, c1);
   ctx.restore();
   currentFont = '';
 }
@@ -1216,11 +1221,13 @@ export function renderGrid(ctx: CanvasRenderingContext2D, rs: RenderState): void
   dpr = rs.dpr;
   currentFont = '';
   const { vp, pal, sheet } = rs;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const ox = rs.print ? rs.print.origin.x : 0;
+  const oy = rs.print ? rs.print.origin.y : 0;
+  ctx.setTransform(dpr, 0, 0, dpr, ox * dpr, oy * dpr);
   ctx.fillStyle = pal.bg;
   ctx.fillRect(0, 0, vp.width, vp.height);
   for (const rp of vp.rowPanes) for (const cp of vp.colPanes) drawPane(ctx, rs, cp, rp);
-  if (sheet.showHeaders) {
+  if (rs.print ? vp.hw > 0 : sheet.showHeaders) {
     const sc = selectedCols(rs.sel);
     for (const cp of vp.colPanes) drawColHeaders(ctx, rs, cp, sc);
     for (const rp of vp.rowPanes) drawRowHeaders(ctx, rs, rp, rs.sel);
@@ -1239,7 +1246,7 @@ export function renderGrid(ctx: CanvasRenderingContext2D, rs: RenderState): void
     ctx.fill();
   }
   // frozen pane dividers
-  if (vp.frozen) {
+  if (vp.frozen && !rs.print) {
     ctx.fillStyle = pal.frozenLine;
     if (vp.colPanes.length > 1) ctx.fillRect(snap(vp.colPanes[1].start) - 1 / dpr, 0, 1 / dpr, vp.height);
     if (vp.rowPanes.length > 1) ctx.fillRect(0, snap(vp.rowPanes[1].start) - 1 / dpr, vp.width, 1 / dpr);

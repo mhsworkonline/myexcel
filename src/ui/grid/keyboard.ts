@@ -253,7 +253,7 @@ export function handleGridKey(e: KeyboardEvent): boolean {
         return true;
       }
       if (alt) return false;
-      openDialog('insertChart', { quick: true });
+      import('../../state/charts').then((m) => m.insertChart('column'));
       return true;
     case 'F12':
       openDialog('saveAs');

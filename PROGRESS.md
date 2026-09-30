@@ -29,12 +29,12 @@ Resume guide: `npm install`, `npm run build`, `./scripts/restart.sh` (serves :31
 - [x] cell locking + sheet protection (password hash, allow-list)
 - [x] visual verification pass + smoke test at end of phase
 
-## Phase 3 – Analysis & output
-- [ ] pivot tables (field list, filters, grouping, calculated fields, refresh)
-- [ ] charts (column/bar/line/pie/area/scatter/combo) + chart tools
-- [ ] sparklines UI (renderer done), Goal Seek, Solver-lite, Scenario Manager, Data Tables
-- [ ] page setup, print preview, page breaks, headers/footers, PDF export
-- [ ] xlsx charts round-trip + constant names; .xls read; .ods read/write
+## Phase 3 – Analysis & output  ✅
+- [x] pivot tables (field list with drag & drop, filters, date/number grouping, calculated fields, refresh, PivotTable Analyze tab)
+- [x] charts (column/bar/line/pie/doughnut/area/scatter/combo + secondary axis) with Chart Design tab, select data, format
+- [x] sparklines (dialog + Sparkline tab), Goal Seek, Solver-lite, Scenario Manager (+ summary), Data Tables
+- [x] page setup, print preview, manual page breaks, headers/footers, print titles, PDF export (jsPDF)
+- [x] xlsx round-trip for charts (native DrawingML), CF, DV, tables, names incl. constants/scoped, MyExcel meta part; .xls read (SheetJS); .ods read/write
 
 ## Phase 4 – Desktop
 - [ ] Tauri wrapper, TauriFileAdapter, recent files, file associations, native menus

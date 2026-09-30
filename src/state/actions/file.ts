@@ -37,8 +37,8 @@ export async function parseFile(name: string, data: ArrayBuffer): Promise<{ wb: 
     const { readXls } = await import('../../io/xls');
     return { wb: await readXls(data), format: 'xls' };
   }
-  const { readXlsx } = await import('../../io/xlsx');
-  return { wb: await readXlsx(data), format: 'xlsx' };
+  const { readXlsxFull } = await import('../../io/xlsxExtras');
+  return { wb: await readXlsxFull(data), format: 'xlsx' };
 }
 
 export async function openFile(): Promise<void> {

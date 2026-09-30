@@ -7,7 +7,8 @@ import type { Sheet } from '../../model/sheet';
 import type { Cell } from '../../model/types';
 import { alertBox, bump, EditState, openDialog, requestScroll, S, setState, transact } from '../store';
 import { checkValidation } from '../validation';
-import { editText } from '../values';
+import { displayOf, editText } from '../values';
+import { measureText } from '../measure';
 
 // ---------- protection ----------
 
@@ -231,6 +232,7 @@ export function applyCommittedText(sheet: Sheet, r0: number, c0: number, text: s
       written.push({ r: r0, c: c0 });
     }
     if (text.startsWith('=')) autoFormatFormulaResults(tx, sheet, written);
+    autoWidenForNumbers(tx, sheet, written);
     autoExtendTables(tx, sheet, r0, c0);
   });
 }
@@ -276,6 +278,32 @@ function moveAfterCommit(move: MoveDir, sel: Selection): void {
   }
   setState({ sel: next });
   requestScroll(next.active.r, next.active.c);
+}
+
+/**
+ * Excel widens a column that still has the default width when a typed number/date
+ * with an explicit number format would otherwise show as #####.
+ */
+function autoWidenForNumbers(tx: Tx, sheet: Sheet, cells: { r: number; c: number }[]): void {
+  if (cells.length > 50) return;
+  const wb = S().wb;
+  let widths: Map<number, number> | null = null;
+  for (const { r, c } of cells) {
+    if (sheet.colWidths.has(c) || sheet.mergeAt(r, c)) continue;
+    const cell = sheet.getCell(r, c);
+    const style = wb.styles.get(sheet.styleIdAt(r, c));
+    const v = cell?.f ? S().engine.getValue(sheet, r, c) : cell?.v;
+    if (typeof v !== 'number' || !style.numFmt || style.wrap) continue;
+    const d = displayOf(sheet, r, c, style, 11);
+    const text = d.left !== undefined ? (d.left ?? '') + (d.right ?? '') : d.text;
+    const need = Math.ceil(measureText(text, style) + 7);
+    const cur = (widths ?? sheet.colWidths).get(c) ?? sheet.colWidth(c);
+    if (need > cur) {
+      widths ??= new Map(sheet.colWidths);
+      widths.set(c, need);
+    }
+  }
+  if (widths) tx.setMeta(sheet, 'colWidths', widths);
 }
 
 /** Typing directly below or right of a table extends it (Excel AutoExpansion). */

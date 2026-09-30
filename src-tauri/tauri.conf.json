@@ -1,0 +1,29 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MyExcel",
+  "version": "0.1.0",
+  "identifier": "app.myexcel.desktop",
+  "build": {
+    "frontendDist": "../out",
+    "devUrl": "http://localhost:3100",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build:static"
+  },
+  "app": {
+    "windows": [
+      { "label": "main", "title": "MyExcel", "width": 1400, "height": 880, "minWidth": 800, "minHeight": 500 }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.ico", "icons/icon.png"],
+    "fileAssociations": [
+      { "ext": ["xlsx", "xlsm"], "name": "Excel Workbook", "description": "Excel Workbook", "role": "Editor", "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+      { "ext": ["xls"], "name": "Excel 97-2003 Workbook", "description": "Excel 97-2003 Workbook", "role": "Viewer" },
+      { "ext": ["csv", "tsv"], "name": "CSV", "description": "Comma separated values", "role": "Editor", "mimeType": "text/csv" },
+      { "ext": ["ods"], "name": "OpenDocument Spreadsheet", "description": "OpenDocument Spreadsheet", "role": "Editor" }
+    ]
+  }
+}

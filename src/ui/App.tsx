@@ -25,7 +25,44 @@ function boot(): void {
   booted = true;
   const w = window as unknown as { __TAURI__?: unknown; __TAURI_INTERNALS__?: unknown };
   if (w.__TAURI__ || w.__TAURI_INTERNALS__) {
-    import('../io/TauriFileAdapter').then((m) => setFileAdapter(new m.TauriFileAdapter())).catch(() => setFileAdapter(new BrowserFileAdapter()));
+    import('../io/TauriFileAdapter')
+      .then(async (m) => {
+        const adapter = new m.TauriFileAdapter();
+        setFileAdapter(adapter);
+        const file = await import('../state/actions/file');
+        const store = await import('../state/store');
+        const zoom = (d: number) => {
+          const sh = S().wb.activeSheet;
+          sh.zoom = d === 0 ? 100 : Math.max(10, Math.min(400, sh.zoom + d));
+          sh.touch();
+          store.bump();
+        };
+        await m.installDesktopBridge(
+          {
+            new: () => file.newWorkbook(),
+            open: () => file.openFile(),
+            save: () => file.saveFile(),
+            saveAs: () => store.openDialog('saveAs'),
+            exportPdf: () => file.saveAs('pdf'),
+            print: () => store.openDialog('print'),
+            undo: store.undo,
+            redo: store.redo,
+            find: () => store.openDialog('findReplace', { tab: 'find' }),
+            replace: () => store.openDialog('findReplace', { tab: 'replace' }),
+            goto: () => store.openDialog('goto'),
+            toggleTheme: () => import('./ribbon/OtherTabs').then((t) => t.setTheme(S().theme === 'dark' ? 'light' : 'dark')),
+            zoomIn: () => zoom(10),
+            zoomOut: () => zoom(-10),
+            zoomReset: () => zoom(0),
+            about: () => setState({ backstage: true }),
+          },
+          async (p) => {
+            const f = await adapter.readPath(p);
+            await openFromData(f.name, f.data, f.handle);
+          },
+        );
+      })
+      .catch(() => setFileAdapter(new BrowserFileAdapter()));
   } else setFileAdapter(new BrowserFileAdapter());
   let theme: 'light' | 'dark' = 'light';
   try {

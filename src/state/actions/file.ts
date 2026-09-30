@@ -59,7 +59,7 @@ export async function openFromData(name: string, data: ArrayBuffer, handle?: unk
   try {
     const { wb, format } = await parseFile(name, data);
     const base = name.replace(/\.[^.]+$/, '');
-    loadWorkbook(wb, { name: base, handle: format === 'xlsx' || format === 'csv' ? handle : undefined, format, dirty: false, lastSaved: Date.now() });
+    loadWorkbook(wb, { name: base, handle: format === 'xlsx' || format === 'csv' || typeof handle === 'string' ? handle : undefined, format, dirty: false, lastSaved: Date.now() });
     setState({ backstage: false });
     fileAdapter().addRecent({ name, path: typeof handle === 'string' ? handle : undefined, opened: Date.now() });
     setStatus(null);

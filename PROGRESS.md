@@ -36,9 +36,9 @@ Resume guide: `npm install`, `npm run build`, `./scripts/restart.sh` (serves :31
 - [x] page setup, print preview, manual page breaks, headers/footers, print titles, PDF export (jsPDF)
 - [x] xlsx round-trip for charts (native DrawingML), CF, DV, tables, names incl. constants/scoped, MyExcel meta part; .xls read (SheetJS); .ods read/write
 
-## Phase 4 – Desktop
-- [ ] Tauri wrapper, TauriFileAdapter, recent files, file associations, native menus
+## Phase 4 – Desktop  ✅
+- [x] Tauri v2 wrapper (cargo build verified, app launches), TauriFileAdapter (native open/save, save-in-place), recent files, file associations (xlsx/xlsm/xls/csv/tsv/ods), native menus bridged to the UI; web build unchanged
 
-## Finish
-- [ ] 200k-row scroll check script
-- [ ] README, KNOWN_GAPS.md
+## Finish  ✅
+- [x] 200k-row scroll check (`scripts/scroll-check.mjs`): median 16.7 ms / max 16.8 ms per frame
+- [x] README, KNOWN_GAPS.md

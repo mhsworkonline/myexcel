@@ -1,13 +1,13 @@
 'use client';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { CellAddr, MAX_COLS, MAX_ROWS, normRange, Range } from '../../model/address';
+import { CellAddr, isFullCols, isFullRows, MAX_COLS, MAX_ROWS, normRange, Range } from '../../model/address';
 import { extractRefs, REF_COLORS_EXCEL, shiftFormula } from '../../model/formula';
 import { expandForMerges, primaryRange, Selection, singleSel } from '../../model/selection';
 import { sheetLayout } from '../../model/layout';
 import { beginEdit, cancelEdit, commitEdit, resetTabAnchor } from '../../state/actions/edit';
 import { onCopyEvent, onPasteEvent } from '../../state/actions/clipboard';
 import { autoFill } from '../../state/actions/fill';
-import { applyFormatPainter, autoFitColumns, autoFitRows, setColumnWidth, setRowHeight } from '../../state/actions/format';
+import { applyFormatPainter, autoFitColumns, autoFitRows, selectedCols, selectedRows, setColumnWidth, setRowHeight } from '../../state/actions/format';
 import { canPoint, pointTo } from '../../state/actions/point';
 import { shiftBlock } from '../../state/actions/structure';
 import { bump, S, setState, transact, useStore } from '../../state/store';
@@ -18,7 +18,9 @@ import { COL_HEADER_CURSOR, COL_RESIZE_CURSOR, CELL_CURSOR, FILL_CURSOR, MOVE_CU
 import { buildViewport, colX, ensureVisible, getScroll, hitTest, Hit, rangeRect, rowY, Viewport } from './geometry';
 import { handleGridKey, setViewportSize, startTyping } from './keyboard';
 import { handleEditKey } from './editKeys';
-import { renderGrid } from './render';
+import { PageBreakInfo, renderGrid } from './render';
+import { movePageBreak, paginate } from '../../state/print';
+import type { Sheet } from '../../model/sheet';
 import { emitScroll, setGridApi } from './scrollBus';
 import { ChartLayer } from '../charts/ChartLayer';
 import { FilterMenu } from './FilterMenu';
@@ -31,13 +33,14 @@ type Drag =
   | { kind: 'select'; add: boolean; anchor: CellAddr }
   | { kind: 'colSel'; anchor: number; add: boolean }
   | { kind: 'rowSel'; anchor: number; add: boolean }
-  | { kind: 'colResize'; col: number; startX: number; startW: number; cols: number[] }
-  | { kind: 'rowResize'; row: number; startY: number; startH: number; rows: number[] }
+  | { kind: 'colResize'; col: number; startX: number; startW: number; cols: number[] | 'all' }
+  | { kind: 'rowResize'; row: number; startY: number; startH: number; rows: number[] | 'all' }
   | { kind: 'fill'; src: Range; target: Range; ctrl: boolean }
   | { kind: 'point'; anchor: CellAddr; fullCols?: boolean; fullRows?: boolean }
   | { kind: 'painter'; anchor: CellAddr }
   | { kind: 'move'; src: Range; offset: CellAddr; target: Range; copy: boolean }
-  | { kind: 'split'; axis: 'x' | 'y' };
+  | { kind: 'split'; axis: 'x' | 'y' }
+  | { kind: 'pageBreak'; axis: 'row' | 'col'; from: number; to: number };
 
 let currentVp: Viewport | null = null;
 export function getViewport(): Viewport | null {
@@ -62,6 +65,25 @@ export function toggleInvalidCircles(on: boolean): void {
   bump();
 }
 
+/**
+ * Columns (or rows) a header-border drag or double-click applies to, as in Excel: every selected
+ * whole column (row) when the border belongs to one, 'all' when every row (column) is selected
+ * so the size becomes the sheet default, otherwise just that one.
+ */
+function resizeTargets(ranges: Range[], axis: 'col' | 'row', idx: number): number[] | 'all' {
+  const whole = (rg: Range) => (axis === 'col' ? isFullCols(rg) : isFullRows(rg));
+  const inside = (rg: Range) => (axis === 'col' ? idx >= rg.c1 && idx <= rg.c2 : idx >= rg.r1 && idx <= rg.r2);
+  if (!ranges.some((rg) => whole(rg) && inside(rg))) return [idx];
+  if (ranges.some((rg) => isFullCols(rg) && isFullRows(rg))) return 'all';
+  const out = new Set<number>();
+  for (const rg of ranges) {
+    if (!whole(rg)) continue;
+    const [a, b] = axis === 'col' ? [rg.c1, rg.c2] : [rg.r1, rg.r2];
+    for (let i = a; i <= b; i++) out.add(i);
+  }
+  return [...out];
+}
+
 export function Grid() {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -80,6 +102,9 @@ export function Grid() {
   const [notePos, setNotePos] = useState<{ r: number; c: number; x: number; y: number } | null>(null);
   const [cursor, setCursor] = useState<string>(CELL_CURSOR);
   const [resizeTip, setResizeTip] = useState<{ x: number; y: number; text: string } | null>(null);
+  // Page Break Preview: breaks on screen and the line shown while one is dragged
+  const pbRef = useRef<PageBreakInfo | null>(null);
+  const [pbLine, setPbLine] = useState<{ x?: number; y?: number } | null>(null);
   const noteTimer = useRef<number | null>(null);
 
   const theme = useStore((s) => s.theme);
@@ -119,7 +144,10 @@ export function Grid() {
     const a = st.sel.active;
     const dv = validationAt(sheet, a.r, a.c);
     const listArrow = dv && dv.type === 'list' && dv.showDropdown && !ed ? { r: a.r, c: a.c } : null;
-    const pb = st.viewMode === 'pageBreak' || sheet.rowBreaks.length || sheet.colBreaks.length ? pageBreaks(sheet) : null;
+    // like Excel, once Page Break Preview has been used, Normal view keeps showing the breaks
+    if (st.viewMode === 'pageBreak') pageBreaksSeen.add(sheet);
+    const pb = st.viewMode === 'pageBreak' || sheet.rowBreaks.length || sheet.colBreaks.length || pageBreaksSeen.has(sheet) ? pageBreaks(sheet, st.viewMode === 'pageBreak') : null;
+    pbRef.current = pb;
     const clip = st.clip && st.clip.sheetId === sheet.id ? { range: st.clip.range, phase: phaseRef.current } : null;
     renderGrid(ctx, {
       sheet,
@@ -388,6 +416,18 @@ export function Grid() {
     return x >= R.x + R.w && x <= R.x + R.w + s + 1 && y >= R.y + R.h - s && y <= R.y + R.h;
   };
 
+  /** A page break line under the pointer in Page Break Preview (4 px tolerance). */
+  const breakHit = (vp: Viewport, x: number, y: number, hit: Hit): { axis: 'row' | 'col'; idx: number } | null => {
+    const pv = pbRef.current?.preview;
+    if (S().viewMode !== 'pageBreak' || !pv || !hit.rowPane || !hit.colPane) return null;
+    const a = pv.area;
+    const inRows = hit.r >= a.r1 && hit.r <= a.r2;
+    const inCols = hit.c >= a.c1 && hit.c <= a.c2;
+    for (const r of pbRef.current!.rows) if (inCols && r > a.r1 && r <= a.r2 && Math.abs(rowY(vp, hit.rowPane, r) - y) <= 4) return { axis: 'row', idx: r };
+    for (const c of pbRef.current!.cols) if (inRows && c > a.c1 && c <= a.c2 && Math.abs(colX(vp, hit.colPane, c) - x) <= 4) return { axis: 'col', idx: c };
+    return null;
+  };
+
   const updateDrag = useCallback(
     (x: number, y: number, e?: { ctrlKey?: boolean; altKey?: boolean }) => {
       const d = dragRef.current;
@@ -401,6 +441,19 @@ export function Grid() {
           const rg = expandForMerges(sheet, normRange({ r1: d.anchor.r, c1: d.anchor.c, r2: hit.r, c2: hit.c }));
           const ranges = d.add ? st.sel.ranges.slice(0, -1).concat([rg]) : [rg];
           setState({ sel: { ranges, active: st.sel.active, anchor: d.anchor } });
+          break;
+        }
+        case 'pageBreak': {
+          // snap to the nearest row/column boundary
+          if (d.axis === 'row' && hit.rowPane) {
+            const top = rowY(vp, hit.rowPane, hit.r);
+            d.to = hit.r + (y - top > (sheet.rowHeight(hit.r) * vp.z) / 2 ? 1 : 0);
+            setPbLine({ y: rowY(vp, hit.rowPane, d.to) });
+          } else if (d.axis === 'col' && hit.colPane) {
+            const left = colX(vp, hit.colPane, hit.c);
+            d.to = hit.c + (x - left > (sheet.colWidth(hit.c) * vp.z) / 2 ? 1 : 0);
+            setPbLine({ x: colX(vp, hit.colPane, d.to) });
+          }
           break;
         }
         case 'painter': {
@@ -585,9 +638,7 @@ export function Grid() {
     }
     if (hit.area === 'colHeader') {
       if (hit.resize !== undefined) {
-        const sc = new Set<number>();
-        for (const rg of st.sel.ranges) if (rg.r1 === 0 && rg.r2 >= MAX_ROWS - 1 && hit.resize >= rg.c1 && hit.resize <= rg.c2) for (let c = rg.c1; c <= rg.c2; c++) sc.add(c);
-        dragRef.current = { kind: 'colResize', col: hit.resize, startX: x, startW: sheet.colWidth(hit.resize), cols: sc.size ? [...sc] : [hit.resize] };
+        dragRef.current = { kind: 'colResize', col: hit.resize, startX: x, startW: sheet.colWidth(hit.resize), cols: resizeTargets(st.sel.ranges, 'col', hit.resize) };
         (dragRef.current as { orig?: Map<number, number> }).orig = sheet.colWidths;
       } else {
         const add = e.ctrlKey || e.metaKey;
@@ -610,9 +661,7 @@ export function Grid() {
     }
     if (hit.area === 'rowHeader') {
       if (hit.resize !== undefined) {
-        const sr = new Set<number>();
-        for (const rg of st.sel.ranges) if (rg.c1 === 0 && rg.c2 >= MAX_COLS - 1 && hit.resize >= rg.r1 && hit.resize <= rg.r2) for (let r = rg.r1; r <= rg.r2; r++) sr.add(r);
-        dragRef.current = { kind: 'rowResize', row: hit.resize, startY: y, startH: sheet.rowHeight(hit.resize), rows: sr.size ? [...sr] : [hit.resize] };
+        dragRef.current = { kind: 'rowResize', row: hit.resize, startY: y, startH: sheet.rowHeight(hit.resize), rows: resizeTargets(st.sel.ranges, 'row', hit.resize) };
         (dragRef.current as { orig?: Map<number, number> }).orig = sheet.rowHeights;
       } else {
         const add = e.ctrlKey || e.metaKey;
@@ -634,6 +683,13 @@ export function Grid() {
       return;
     }
     if (hit.area !== 'cell') return;
+
+    const bh = breakHit(vp, x, y, hit);
+    if (bh) {
+      dragRef.current = { kind: 'pageBreak', axis: bh.axis, from: bh.idx, to: bh.idx };
+      capture();
+      return;
+    }
 
     // filter button / list arrow
     const fcol = filterButtonHit(x, y, hit);
@@ -712,7 +768,9 @@ export function Grid() {
     else if (hit.area === 'splitV') cur = COL_RESIZE_CURSOR;
     else if (hit.area === 'splitH') cur = ROW_RESIZE_CURSOR;
     else if (hit.area === 'cell') {
-      if (fillHandleHit(x, y)) cur = FILL_CURSOR;
+      const bh = breakHit(vp, x, y, hit);
+      if (bh) cur = bh.axis === 'row' ? ROW_RESIZE_CURSOR : COL_RESIZE_CURSOR;
+      else if (fillHandleHit(x, y)) cur = FILL_CURSOR;
       else if (selectionBorderHit(x, y, hit) && !S().edit) cur = MOVE_CURSOR;
       else if (filterButtonHit(x, y, hit) !== null || listArrowHit(x, y)) cur = 'default';
       else if (S().wb.activeSheet.getCell(hit.r, hit.c)?.link) cur = 'pointer';
@@ -742,6 +800,7 @@ export function Grid() {
     const d = dragRef.current;
     dragRef.current = null;
     setResizeTip(null);
+    setPbLine(null);
     if (!d) return;
     const st = S();
     const sheet = st.wb.activeSheet;
@@ -750,14 +809,14 @@ export function Grid() {
         const w = sheet.colWidths.get(d.col) ?? sheet.colWidth(d.col);
         sheet.colWidths = (d as unknown as { orig: Map<number, number> }).orig;
         sheet.touch();
-        setColumnWidth(w, d.cols);
+        if (Math.round(w) !== Math.round(d.startW)) setColumnWidth(w, d.cols); // a click without a drag changes nothing
         break;
       }
       case 'rowResize': {
         const h = sheet.rowHeights.get(d.row) ?? sheet.rowHeight(d.row);
         sheet.rowHeights = (d as unknown as { orig: Map<number, number> }).orig;
         sheet.touch();
-        setRowHeight(h, d.rows);
+        if (Math.round(h) !== Math.round(d.startH)) setRowHeight(h, d.rows);
         break;
       }
       case 'fill': {
@@ -776,6 +835,10 @@ export function Grid() {
       }
       case 'painter': {
         applyFormatPainter(primaryRange(S().sel));
+        break;
+      }
+      case 'pageBreak': {
+        movePageBreak(d.axis, d.from, d.to);
         break;
       }
       case 'move': {
@@ -809,14 +872,13 @@ export function Grid() {
     const hit = hitTest(vp, x, y);
     const st = S();
     if (hit.area === 'colHeader' && hit.resize !== undefined) {
-      const cols = st.sel.ranges.some((rg) => rg.r1 === 0 && rg.r2 >= MAX_ROWS - 1 && hit.resize! >= rg.c1 && hit.resize! <= rg.c2)
-        ? st.sel.ranges.flatMap((rg) => Array.from({ length: rg.c2 - rg.c1 + 1 }, (_, i) => rg.c1 + i))
-        : [hit.resize];
-      autoFitColumns(cols);
+      const cols = resizeTargets(st.sel.ranges, 'col', hit.resize);
+      autoFitColumns(cols === 'all' ? selectedCols() : cols);
       return;
     }
     if (hit.area === 'rowHeader' && hit.resize !== undefined) {
-      autoFitRows([hit.resize]);
+      const rows = resizeTargets(st.sel.ranges, 'row', hit.resize);
+      autoFitRows(rows === 'all' ? selectedRows() : rows);
       return;
     }
     if (hit.area !== 'cell') return;
@@ -974,6 +1036,12 @@ export function Grid() {
       <ChartLayer />
       {fillOpts && <AutoFillOptions x={fillOpts.x} y={fillOpts.y} src={fillOpts.src} target={fillOpts.target} onClose={() => setFillOpts(null)} />}
       {notePos && !edit && <NotePopup r={notePos.r} c={notePos.c} x={notePos.x} y={notePos.y} />}
+      {pbLine && (
+        <div
+          className="absolute z-30 pointer-events-none"
+          style={pbLine.y !== undefined ? { left: 0, right: 0, top: pbLine.y - 1, height: 3, background: '#3A6FD8' } : { top: 0, bottom: 0, left: (pbLine.x ?? 0) - 1, width: 3, background: '#3A6FD8' }}
+        />
+      )}
       {resizeTip && (
         <div className="absolute z-30 px-1.5 py-0.5 text-[11px] border shadow-sm pointer-events-none" style={{ left: resizeTip.x + 8, top: resizeTip.y + 4, background: 'var(--tooltip-bg)', borderColor: 'var(--border)', color: 'var(--text)' }}>
           {resizeTip.text}
@@ -1036,43 +1104,44 @@ function moveOrCopyBlock(src: Range, target: Range, copy: boolean): void {
   } else doIt();
 }
 
-function pageBreaks(sheet: import('../../model/sheet').Sheet): { rows: number[]; cols: number[] } {
-  // Automatic page breaks: approximate printable area of the chosen paper
-  const ps = sheet.pageSetup;
-  const inch = 96;
-  const paper: Record<string, [number, number]> = { letter: [8.5, 11], legal: [8.5, 14], a4: [8.27, 11.69], a3: [11.69, 16.54], tabloid: [11, 17] };
-  let [pw, ph] = paper[ps.paperSize] ?? paper.letter;
-  if (ps.orientation === 'landscape') [pw, ph] = [ph, pw];
-  const scale = (ps.fitToPage ? 100 : ps.scale) / 100;
-  const availW = ((pw - ps.margins.left - ps.margins.right) * inch) / scale;
-  const availH = ((ph - ps.margins.top - ps.margins.bottom) * inch) / scale;
-  const used = sheet.usedRange();
-  if (!used) return { rows: sheet.rowBreaks.map((b) => b + 1), cols: sheet.colBreaks.map((b) => b + 1) };
-  const rows: number[] = [];
-  let acc = 0;
-  const manualR = new Set(sheet.rowBreaks.map((b) => b + 1));
-  for (let r = 0; r <= used.r2; r++) {
-    const h = sheet.rowHeight(r);
-    if (manualR.has(r) || acc + h > availH) {
-      rows.push(r);
-      acc = 0;
-    }
-    acc += h;
+const pbCache = new WeakMap<Sheet, { key: unknown[]; info: PageBreakInfo }>();
+const pageBreaksSeen = new WeakSet<Sheet>();
+
+/** Page layout for the grid, from the same pagination that printing uses. */
+function pageBreaks(sheet: Sheet, preview: boolean): PageBreakInfo {
+  const key = [sheet.rev, sheet.pageSetup, sheet.rowBreaks, sheet.colBreaks, preview];
+  const hit = pbCache.get(sheet);
+  if (hit && hit.key.every((k, i) => k === key[i])) return hit.info;
+  const pages = paginate(sheet);
+  const has = sheet.dataRange() || sheet.pageSetup.printArea || sheet.charts.length;
+  const rows = new Set<number>();
+  const cols = new Set<number>();
+  for (const p of pages) {
+    if (p.rows[0] > 0) rows.add(p.rows[0]);
+    if (p.cols[0] > 0) cols.add(p.cols[0]);
   }
-  rows.push(used.r2 + 1);
-  const cols: number[] = [];
-  acc = 0;
-  const manualC = new Set(sheet.colBreaks.map((b) => b + 1));
-  for (let c = 0; c <= used.c2; c++) {
-    const w = sheet.colWidth(c);
-    if (manualC.has(c) || acc + w > availW) {
-      cols.push(c);
-      acc = 0;
-    }
-    acc += w;
-  }
-  cols.push(used.c2 + 1);
-  return { rows, cols };
+  const info: PageBreakInfo = {
+    rows: [...rows].sort((a, b) => a - b),
+    cols: [...cols].sort((a, b) => a - b),
+    manualRows: new Set(sheet.rowBreaks.map((b) => b + 1)),
+    manualCols: new Set(sheet.colBreaks.map((b) => b + 1)),
+    preview: null,
+  };
+  if (has) {
+    const area = {
+      r1: Math.min(...pages.map((p) => p.rows[0])),
+      r2: Math.max(...pages.map((p) => p.rows[1])),
+      c1: Math.min(...pages.map((p) => p.cols[0])),
+      c2: Math.max(...pages.map((p) => p.cols[1])),
+    };
+    if (!preview) {
+      // Normal view also marks the right/bottom edge of the printed area, as Excel does
+      info.rows.push(area.r2 + 1);
+      info.cols.push(area.c2 + 1);
+    } else info.preview = { area, pages: pages.map((p) => ({ r1: p.rows[0], r2: p.rows[1], c1: p.cols[0], c2: p.cols[1], index: p.index })) };
+  } else if (preview) info.preview = { area: { r1: 0, c1: 0, r2: -1, c2: -1 }, pages: [] };
+  pbCache.set(sheet, { key, info });
+  return info;
 }
 
 // ---------- vertical scrollbar ----------

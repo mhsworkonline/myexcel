@@ -7,7 +7,7 @@ import type { Sheet } from '../../model/sheet';
 import { BorderEdge, CellStyle, DEFAULT_FONT_SIZE } from '../../model/styles';
 import type { Workbook } from '../../model/workbook';
 import { cfAt, CFResult } from '../../state/cf';
-import { cssFont, ptToPx } from '../../state/measure';
+import { cssFont, ptToPx, wrapLines } from '../../state/measure';
 import { sparklineValues } from '../../state/sparkline';
 import { tableAt, tableLook } from '../../state/tableStyles';
 import { displayOf, Display } from '../../state/values';
@@ -32,13 +32,23 @@ export interface RenderState {
   clip: { range: Range; phase: number } | null;
   fillPreview: Range | null;
   showFormulas: boolean;
-  pageBreaks: { rows: number[]; cols: number[] } | null;
+  pageBreaks: PageBreakInfo | null;
   invalid: Set<string> | null;
   filterButtons: boolean;
   listArrow: { r: number; c: number } | null;
   painterRange: Range | null;
   /** Print rendering: no selection/UI overlays, gridlines per page setup, drawn at an origin offset. */
   print?: { gridlines: boolean; origin: { x: number; y: number } };
+}
+
+/** Page layout shown on the grid. `rows`/`cols` are the first index of every page after the first. */
+export interface PageBreakInfo {
+  rows: number[];
+  cols: number[];
+  manualRows: Set<number>;
+  manualCols: Set<number>;
+  /** Page Break Preview: the printed area and its pages (index = print order). */
+  preview: { area: Range; pages: { r1: number; r2: number; c1: number; c2: number; index: number }[] } | null;
 }
 
 let dpr = 1;
@@ -372,7 +382,7 @@ function drawCellText(ctx: CanvasRenderingContext2D, rs: RenderState, job: TextJ
   let d = displayOf(sheet, r, c, style, 11, rs.showFormulas);
   const numeric = typeof d.value === 'number' && !rs.showFormulas;
   // General numbers shrink precision to fit, other numbers show ####
-  if (numeric && !style.wrap) {
+  if (numeric) {
     let tw = ctx.measureText(d.text).width;
     if (tw > avail) {
       if (!style.numFmt && typeof d.value === 'number') {
@@ -450,13 +460,25 @@ function drawCellText(ctx: CanvasRenderingContext2D, rs: RenderState, job: TextJ
   const hAlign = style.hAlign;
   const fill = hAlign === 'fill';
   if (style.wrap || hAlign === 'justify' || vAlign === 'justify' || d.text.includes('\n') && style.wrap) {
-    const lines = wrapCanvas(ctx, d.text, Math.max(4, avail));
+    // numbers never wrap (they shrink or show ####, handled above)
+    const lines = numeric ? [d.text] : wrapCanvas(ctx, d.text, Math.max(4, avail));
+    // lines are spaced like Excel's rows (one row-line per line); text taller than the row shows its first lines
+    const pitch = lines.length > 1 ? Math.round((fontPx / z) * 1.33 + 0.5) * z : lineH;
+    const total = lines.length * pitch;
+    const slot = (pitch - fontPx) / 2 + ascent;
+    const overflow = lines.length > 1 && total > h;
+    const wrapBaseline = (i: number) =>
+      overflow || vAlign === 'top'
+        ? y + slot + i * pitch
+        : vAlign === 'bottom'
+          ? y + h - total + slot + i * pitch
+          : y + (h - total) / 2 + slot + i * pitch;
     for (let i = 0; i < lines.length; i++) {
       const lw = ctx.measureText(lines[i]).width;
       let tx = x + padL;
       if (d.hAlign === 'center') tx = x + (w - lw) / 2;
       else if (d.hAlign === 'right') tx = x + w - padR - lw;
-      const bl = baselineFor(lines.length, i);
+      const bl = lines.length > 1 ? wrapBaseline(i) : baselineFor(1, 0);
       ctx.fillText(lines[i], tx, bl);
       drawDecorations(ctx, style, tx, bl, lw, fontPx, color);
     }
@@ -480,27 +502,108 @@ function drawCellText(ctx: CanvasRenderingContext2D, rs: RenderState, job: TextJ
   ctx.restore();
 }
 
-function wrapCanvas(ctx: CanvasRenderingContext2D, text: string, width: number): string[] {
-  const out: string[] = [];
-  for (const para of text.split('\n')) {
-    const words = para.split(/(\s+)/);
-    let line = '';
-    for (const w of words) {
-      const cand = line + w;
-      if (line && ctx.measureText(cand.trimEnd()).width > width) {
-        out.push(line.trimEnd());
-        line = w.trimStart();
-        while (line.length > 1 && ctx.measureText(line).width > width) {
-          let k = line.length - 1;
-          while (k > 1 && ctx.measureText(line.slice(0, k)).width > width) k--;
-          out.push(line.slice(0, k));
-          line = line.slice(k);
-        }
-      } else line = cand;
+const PB_BLUE = '#3A6FD8';
+
+function drawPageBreaks(
+  ctx: CanvasRenderingContext2D,
+  rs: RenderState,
+  pb: PageBreakInfo,
+  X: (c: number) => number,
+  Y: (r: number) => number,
+  px: number,
+  py: number,
+  pw: number,
+  ph: number,
+  r0: number,
+  r1: number,
+  c0: number,
+  c1: number,
+): void {
+  const z = rs.vp.z;
+  ctx.save();
+  const pv = pb.preview;
+  if (!pv) {
+    ctx.strokeStyle = rs.pal.pageBreak;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    for (const r of pb.rows) {
+      if (r < r0 || r > r1 + 1) continue;
+      ctx.moveTo(px, Y(r) - 0.5);
+      ctx.lineTo(px + pw, Y(r) - 0.5);
     }
-    out.push(line);
+    for (const c of pb.cols) {
+      if (c < c0 || c > c1 + 1) continue;
+      ctx.moveTo(X(c) - 0.5, py);
+      ctx.lineTo(X(c) - 0.5, py + ph);
+    }
+    ctx.stroke();
+    ctx.restore();
+    return;
   }
-  return out;
+  const a = pv.area;
+  // coordinates of indexes outside the drawn range are clamped to the pane edges
+  const cx = (c: number) => (c < c0 ? px - 10 : c > c1 + 1 ? px + pw + 10 : X(c));
+  const cy = (r: number) => (r < r0 ? py - 10 : r > r1 + 1 ? py + ph + 10 : Y(r));
+  const ax1 = cx(a.c1);
+  const ay1 = cy(a.r1);
+  const ax2 = cx(a.c2 + 1);
+  const ay2 = cy(a.r2 + 1);
+  // everything outside the print area is grayed out
+  ctx.fillStyle = rs.dark ? 'rgba(20,20,20,0.78)' : 'rgba(128,128,128,0.72)';
+  ctx.beginPath();
+  ctx.rect(px, py, pw, ph);
+  ctx.rect(ax1, ay1, ax2 - ax1, ay2 - ay1);
+  ctx.fill('evenodd');
+  if (!pv.pages.length) {
+    ctx.restore();
+    return;
+  }
+  // "Page N" watermark in the middle of each visible page
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = rs.dark ? 'rgba(200,200,200,0.22)' : 'rgba(110,110,110,0.28)';
+  for (const p of pv.pages) {
+    if (p.r2 < r0 || p.r1 > r1 || p.c2 < c0 || p.c1 > c1) continue;
+    const x1 = cx(p.c1);
+    const x2 = cx(p.c2 + 1);
+    const y1 = cy(p.r1);
+    const y2 = cy(p.r2 + 1);
+    const size = Math.max(14, Math.min(96 * z, (x2 - x1) / 4, (y2 - y1) / 2.5));
+    ctx.font = `bold ${Math.round(size)}px Calibri, Carlito, "Segoe UI", sans-serif`;
+    ctx.fillText(`Page ${p.index + 1}`, (x1 + x2) / 2, (y1 + y2) / 2);
+  }
+  currentFont = '';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  // breaks inside the area: dashed when automatic, solid when inserted
+  ctx.strokeStyle = PB_BLUE;
+  ctx.lineWidth = Math.max(2, Math.round(2 * z));
+  for (const r of pb.rows) {
+    if (r <= a.r1 || r > a.r2 || r < r0 || r > r1 + 1) continue;
+    ctx.setLineDash(pb.manualRows.has(r) ? [] : [8, 4]);
+    ctx.beginPath();
+    ctx.moveTo(ax1, Y(r));
+    ctx.lineTo(ax2, Y(r));
+    ctx.stroke();
+  }
+  for (const c of pb.cols) {
+    if (c <= a.c1 || c > a.c2 || c < c0 || c > c1 + 1) continue;
+    ctx.setLineDash(pb.manualCols.has(c) ? [] : [8, 4]);
+    ctx.beginPath();
+    ctx.moveTo(X(c), ay1);
+    ctx.lineTo(X(c), ay2);
+    ctx.stroke();
+  }
+  // print area outline
+  ctx.setLineDash([]);
+  ctx.lineWidth = Math.max(3, Math.round(3 * z));
+  ctx.strokeRect(ax1, ay1, ax2 - ax1, ay2 - ay1);
+  ctx.restore();
+}
+
+function wrapCanvas(ctx: CanvasRenderingContext2D, text: string, width: number): string[] {
+  return wrapLines(text, width, (s) => ctx.measureText(s).width);
 }
 
 // ---------- panes ----------
@@ -764,28 +867,8 @@ function drawPane(ctx: CanvasRenderingContext2D, rs: RenderState, cp: Pane, rp: 
     }
   }
 
-  // page breaks
-  if (rs.pageBreaks) {
-    ctx.save();
-    ctx.strokeStyle = pal.pageBreak;
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 3]);
-    ctx.beginPath();
-    for (const r of rs.pageBreaks.rows) {
-      if (r < r0 || r > r1 + 1) continue;
-      const y = Y(r) - 0.5;
-      ctx.moveTo(px, y);
-      ctx.lineTo(px + pw, y);
-    }
-    for (const c of rs.pageBreaks.cols) {
-      if (c < c0 || c > c1 + 1) continue;
-      const x = X(c) - 0.5;
-      ctx.moveTo(x, py);
-      ctx.lineTo(x, py + ph);
-    }
-    ctx.stroke();
-    ctx.restore();
-  }
+  // page breaks: dashed lines in Normal view; pages, print area and "Page N" in Page Break Preview
+  if (rs.pageBreaks) drawPageBreaks(ctx, rs, rs.pageBreaks, X, Y, px, py, pw, ph, r0, r1, c0, c1);
 
   if (!rs.print) drawOverlays(ctx, rs, cp, rp, r0, r1, c0, c1);
   ctx.restore();

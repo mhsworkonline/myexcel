@@ -23,6 +23,8 @@ npx playwright install chromium   # only for the end-to-end smoke test
 | `npm run e2e` | Playwright smoke test: open, edit, format, sort, undo, save |
 | `npm run tauri:dev` | Desktop app against the dev server (hot reload) |
 | `npm run tauri:build` | Release desktop build + installers in `src-tauri/target/release/bundle/` (`nsis/*.exe`, `msi/*.msi`) |
+| `npm run testbuild:app` | Test app "MyExcel (Test)" in `builds/test/MyExcel Test/` (only needed once, or after Rust changes) |
+| `npm run testbuild:ui -- "note"` | Rebuild the UI into the test app; then Help > Reload in the app |
 
 One-off checks (not part of the test suite): `node scripts/scroll-check.mjs` (200k-row scroll performance, needs `npm start`) and `node scripts/desktop-check.mjs` (drives the packaged desktop app over WebView2 remote debugging).
 
@@ -31,10 +33,11 @@ One-off checks (not part of the test suite): `node scripts/scroll-check.mjs` (20
 Everything stays on your computer; the app makes no network requests.
 
 - **Files:** native Open/Save dialogs. Ctrl+S writes straight back to the opened file (`.xlsx`, `.csv`, `.tsv`, `.ods`); `.xls` opens read-only and saves as `.xlsx`. Double-clicking an associated file (`.xlsx`, `.xls`, `.csv`, `.ods`) opens it in MyExcel.
-- **Where data lives** (`%APPDATA%\app.myexcel.desktop\`): `settings.json` holds theme, default zoom, default font and recent files; `recovery\snapshot.json` holds the crash-recovery copy (written every 30 s while there are unsaved changes, removed when you save or discard).
+- **Where data lives** (`%APPDATA%\app.myexcel.desktop\`): `settings.json` holds theme, default zoom, default font and recent files; `recovery\snapshot-<id>.json` holds each window's crash-recovery copy (written every 30 s while there are unsaved changes, removed when you save or discard).
 - **Recent files:** File > Open (and the File tab's Home page), or the menu's File > Open Recent.
 - **Options:** File tab > Options (theme, default font, default zoom).
-- **Closing** with unsaved changes asks Save / Don't Save / Cancel.
+- **Windows:** one workbook per window, like Excel. Opening a file or creating a new workbook opens a new window (an untouched blank workbook is replaced instead).
+- **Closing** (Ctrl+W, Ctrl+F4, File > Close or the window button) with unsaved changes asks Save / Don't Save / Cancel.
 - **Clipboard:** copy/paste exchanges formatted data with Excel in both directions.
 
 ## Features

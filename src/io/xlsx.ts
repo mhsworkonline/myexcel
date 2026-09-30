@@ -350,23 +350,25 @@ export async function readXlsx(data: ArrayBuffer): Promise<Workbook> {
       if (view.zoomScale) sheet.zoom = view.zoomScale;
       if (view.rightToLeft) sheet.rtl = true;
     }
+    // sheet-wide default sizes (sheetFormatPr)
+    const fmtPr = ws.properties as { defaultRowHeight?: number; defaultColWidth?: number } | undefined;
+    if (fmtPr?.defaultRowHeight) sheet.defaultRowHeight = ptToPxH(fmtPr.defaultRowHeight);
+    if (fmtPr?.defaultColWidth) sheet.defaultColWidth = charsToPx(fmtPr.defaultColWidth);
     // columns
     const colCount = ws.columnCount;
     for (let c = 1; c <= Math.max(colCount, ws.columns?.length ?? 0); c++) {
       const col = ws.getColumn(c);
       if (col.width !== undefined && col.width !== null) {
         const px = charsToPx(col.width);
-        if (px !== DEFAULT_COL_WIDTH) sheet.colWidths.set(c - 1, px);
+        if (px !== sheet.defaultColWidth) sheet.colWidths.set(c - 1, px);
       }
       if (col.hidden) sheet.hiddenCols.add(c - 1);
       const cs = readStyle(col);
       if (Object.keys(cs).length) sheet.colStyles.set(c - 1, styles.intern(cs));
     }
-    const sheetDefaultHeight = ws.properties?.defaultRowHeight;
     ws.eachRow({ includeEmpty: true }, (row, rn) => {
       const r = rn - 1;
-      if (row.height && ptToPxH(row.height) !== DEFAULT_ROW_HEIGHT && (row as unknown as { customHeight?: boolean }).customHeight !== false) sheet.rowHeights.set(r, ptToPxH(row.height));
-      else if (!row.height && sheetDefaultHeight && ptToPxH(sheetDefaultHeight) !== DEFAULT_ROW_HEIGHT) sheet.rowHeights.set(r, ptToPxH(sheetDefaultHeight));
+      if (row.height && ptToPxH(row.height) !== sheet.defaultRowHeight && (row as unknown as { customHeight?: boolean }).customHeight !== false) sheet.rowHeights.set(r, ptToPxH(row.height));
       if (row.hidden) sheet.hiddenRows.add(r);
       const rstyle = (row as unknown as { _style?: unknown; style?: unknown }).style ? readStyle(row) : {};
       if (Object.keys(rstyle).length && (row as unknown as { model?: { style?: unknown } }).model?.style) sheet.rowStyles.set(r, styles.intern(rstyle));
@@ -684,7 +686,7 @@ export async function writeXlsx(wb: Workbook, getValue: ValueReader): Promise<Ar
     if (sheet.freeze.rows || sheet.freeze.cols) Object.assign(v, { state: 'frozen', xSplit: sheet.freeze.cols, ySplit: sheet.freeze.rows, topLeftCell: addrToA1(sheet.freeze.rows, sheet.freeze.cols) });
     views.push(v as Partial<ExcelJS.WorksheetView>);
     const ws = x.addWorksheet(sheet.name, {
-      properties: { tabColor: sheet.tabColor ? argb(sheet.tabColor) : undefined, defaultRowHeight: 15 } as Partial<ExcelJS.WorksheetProperties>,
+      properties: { tabColor: sheet.tabColor ? argb(sheet.tabColor) : undefined, defaultRowHeight: pxToPtH(sheet.defaultRowHeight), defaultColWidth: sheet.defaultColWidth !== DEFAULT_COL_WIDTH ? pxToChars(sheet.defaultColWidth) : undefined } as Partial<ExcelJS.WorksheetProperties>,
       views: views as ExcelJS.WorksheetView[],
       state: sheet.visibility,
     });

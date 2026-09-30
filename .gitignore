@@ -7,3 +7,24 @@ src-tauri/target
 *.tsbuildinfo
 next-env.d.ts
 screenshots
+builds
+src-tauri/target-test
+
+# secrets and local config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+
+# logs, OS and editor clutter
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+coverage
+.vscode/*
+!.vscode/extensions.json
+.idea

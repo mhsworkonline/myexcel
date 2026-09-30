@@ -59,3 +59,17 @@ Prerequisites checked: Rust 1.96.1 MSVC ✓, VS 2022 Build Tools ✓, WebView2 1
 - [x] Native window title mirrors file name + save status; in-app title row kept
 - [x] Native clipboard (CF_HTML + text) for ribbon/menu copy/paste; Ctrl+C/V via webview events
 - [x] Release build + NSIS/MSI installers; `scripts/desktop-check.mjs` passes 15/15 against the packaged exe (launch-file open, in-place save, settings/recent, 30 s recovery + crash offer, CF_HTML clipboard, title, CSP, close prompt)
+
+## Test build channel
+- [x] `--features test-build` shell loading the UI from disk; `tauri.test.conf.json` (MyExcel (Test), `app.myexcel.test`, no associations); Help > Reload (keeps the open workbook) and Help > Developer Tools
+- [x] `npm run testbuild:app` (exe, one-time / Rust changes) and `npm run testbuild:ui "note"` (UI deploy, ~75 s) into `builds/test/`, with `CHANGELOG.md`
+- [x] `desktop-check` against the test exe: 17/17 PASS (adds title build marker + reload-keeps-work); live swap verified (build 1 → 2 after Reload)
+
+## Test round 1 (reported issues)
+- [x] Ctrl+W / Ctrl+F4 / File > Close (menu + Backstage) close the window via the Save / Don't Save / Cancel prompt
+- [x] Opening a file (dialog, Recent) while a workbook is in use opens a new window; New / Ctrl+N opens a new window; untouched Book1 is replaced; web asks before replacing unsaved work
+- [x] Crash recovery per window (snapshot + lock per process); stale locks cleaned
+- [x] Wrap Text: automatic row heights on every edit (keeps hand-set heights), whole-column/sheet wrap, long words, hyphens, column resize re-fits, numbers show ####, Excel line pitch and row heights (Calibri 11 = 20 px)
+- [x] Select All + resize (drag, double-click, Row Height/Column Width, Standard Width) → sheet default sizes, saved to .xlsx; clicking a border no longer adds an undo step
+- [x] Page Break Preview rebuilt on print pagination: gray outside, page outlines, Page N, own 60% zoom, draggable breaks; Insert/Remove Page Break handle row + column
+- [x] Browser check of all of the above (19/19), desktop-check 21/21 against the rebuilt test exe, vitest 6/6, e2e smoke

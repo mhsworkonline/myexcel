@@ -2,7 +2,7 @@
 import { useEffect } from 'react';
 import { BrowserFileAdapter } from '../io/BrowserFileAdapter';
 import { setFileAdapter } from '../io/FileAdapter';
-import { checkRecovery, openFromData, startAutosave } from '../state/actions/file';
+import { checkRecovery, openDropped, openFromData, restoreAfterReload, startAutosave } from '../state/actions/file';
 import { S, setState, useStore } from '../state/store';
 import { applyDefaultsToPristineWorkbook, applyTheme, loadSettings } from '../state/settings';
 import { installDesktop, isTauri } from './desktop';
@@ -57,7 +57,7 @@ async function boot(): Promise<void> {
   }
   installPhase3();
   startAutosave();
-  checkRecovery();
+  if (!(await restoreAfterReload().catch(() => false))) checkRecovery();
   // expose a tiny test hook for automation
   (window as unknown as { __myexcel?: unknown }).__myexcel = { S, openFromData };
   // Action modules for automation / debugging
@@ -76,8 +76,10 @@ async function boot(): Promise<void> {
     import('../state/charts'),
     import('../state/whatif'),
     import('../state/print'),
-  ]).then(([edit, format, structure, sortFilter, fill, data, find, formulas, store, values, pivot, charts, whatif, print]) => {
-    Object.assign((window as unknown as { __myexcel: object }).__myexcel, { edit, format, structure, sortFilter, fill, data, find, formulas, store, values, pivot, charts, whatif, print });
+    import('../state/actions/file'),
+    import('./grid/Grid'),
+  ]).then(([edit, format, structure, sortFilter, fill, data, find, formulas, store, values, pivot, charts, whatif, print, file, grid]) => {
+    Object.assign((window as unknown as { __myexcel: object }).__myexcel, { edit, format, structure, sortFilter, fill, data, find, formulas, store, values, pivot, charts, whatif, print, file, grid });
   });
 }
 
@@ -96,7 +98,7 @@ export function App() {
       const f = e.dataTransfer?.files?.[0];
       if (!f) return;
       e.preventDefault();
-      await openFromData(f.name, await f.arrayBuffer());
+      openDropped(f.name, await f.arrayBuffer());
     };
     const onDragOver = (e: DragEvent) => {
       if (e.dataTransfer?.types.includes('Files')) e.preventDefault();
@@ -109,6 +111,12 @@ export function App() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's' && !st.dialog) {
         e.preventDefault();
         import('../state/actions/file').then((m) => m.saveFile());
+      }
+      // Ctrl+W / Ctrl+F4 close the workbook window (the browser keeps Ctrl+W for its tab on the web)
+      if (((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'w') || (e.ctrlKey && e.key === 'F4')) {
+        if (st.dialog || st.edit) return;
+        e.preventDefault();
+        import('../state/actions/file').then((m) => m.closeWorkbook());
       }
       if (e.altKey && e.key.toLowerCase() === 'f' && !st.edit) {
         e.preventDefault();

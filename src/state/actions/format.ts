@@ -1,10 +1,10 @@
 import { isFullCols, isFullRows, MAX_COLS, MAX_ROWS, Range } from '../../model/address';
-import type { Tx } from '../../model/commands';
+import { MetaCommand, Tx } from '../../model/commands';
 import { adjustDecimals, FMT } from '../../model/numfmt';
 import { primaryRange } from '../../model/selection';
-import { DEFAULT_COL_WIDTH, DEFAULT_ROW_HEIGHT, Sheet } from '../../model/sheet';
+import { DEFAULT_ROW_HEIGHT, MetaKey, Sheet } from '../../model/sheet';
 import { BorderEdge, BorderStyleName, CellStyle, DEFAULT_FONT_SIZE, StylePatch } from '../../model/styles';
-import { lineHeight, measureText, wrapText } from '../measure';
+import { lineHeight, measureText, rowLineHeight, wrapText } from '../measure';
 import { bump, openDialog, S, setState, transact } from '../store';
 import { displayOf, getComputed } from '../values';
 import { guardRanges, guardSheet } from './edit';
@@ -89,7 +89,8 @@ export function applyStyle(patch: StylePatch, label = 'Format Cells', ranges?: R
   }
   transact(label, (tx) => {
     applyStyleFn(tx, sheet, ranges ?? st.sel.ranges, () => patch);
-    if (patch.fontSize !== undefined || patch.wrap !== undefined || patch.fontName !== undefined) autoRowHeights(tx, sheet, ranges ?? st.sel.ranges);
+    // rows with cells re-fit through the edit hook; empty whole rows follow a new font size here
+    if (patch.fontSize !== undefined || patch.fontName !== undefined) autoRowHeights(tx, sheet, ranges ?? st.sel.ranges);
   });
 }
 
@@ -429,40 +430,102 @@ export function applyFormatPainter(target: Range): void {
 
 // ---------- sizes ----------
 
-export function setColumnWidth(px: number, cols?: number[]): void {
+/** True when the selection spans every column (whole rows or Select All): sizes go to the sheet default. */
+const spansAllCols = () => S().sel.ranges.some(isFullRows);
+/** True when the selection spans every row (whole columns or Select All). */
+const spansAllRows = () => S().sel.ranges.some(isFullCols);
+
+/**
+ * Column width for the given columns, or the selection. 'all' (or a selection spanning every
+ * column) makes it the sheet's default width and clears individual widths, as Excel does.
+ */
+export function setColumnWidth(px: number, cols?: number[] | 'all'): void {
   const st = S();
   const sheet = st.wb.activeSheet;
   if (!guardSheet('formatColumns')) return;
-  const list = cols ?? selectedCols();
+  const all = cols === 'all' || (cols === undefined && spansAllCols());
+  const list = all ? [] : Array.isArray(cols) ? cols : selectedCols();
+  const w = Math.round(px);
   transact('Column Width', (tx) => {
-    const m = new Map(sheet.colWidths);
-    const hidden = new Set(sheet.hiddenCols);
-    for (const c of list) {
-      if (px <= 0) hidden.add(c);
-      else {
-        hidden.delete(c);
-        if (Math.round(px) === DEFAULT_COL_WIDTH) m.delete(c);
-        else m.set(c, Math.round(px));
+    const before = sheet.colWidths;
+    const beforeDef = sheet.defaultColWidth;
+    if (all) {
+      if (w <= 0) {
+        tx.setMeta(sheet, 'hiddenCols', new Set(Array.from({ length: MAX_COLS }, (_, i) => i)));
+        return;
+      }
+      tx.setMeta(sheet, 'defaultColWidth', w);
+      tx.setMeta(sheet, 'colWidths', new Map());
+      if (sheet.hiddenCols.size) tx.setMeta(sheet, 'hiddenCols', new Set());
+    } else {
+      const m = new Map(sheet.colWidths);
+      const hidden = new Set(sheet.hiddenCols);
+      for (const c of list) {
+        if (w <= 0) hidden.add(c);
+        else {
+          hidden.delete(c);
+          if (w === sheet.defaultColWidth) m.delete(c);
+          else m.set(c, w);
+        }
+      }
+      tx.setMeta(sheet, 'colWidths', m);
+      if (hidden.size !== sheet.hiddenCols.size || [...hidden].some((c) => !sheet.hiddenCols.has(c))) tx.setMeta(sheet, 'hiddenCols', hidden);
+    }
+    // wrapped text re-flows: re-fit automatic rows that hold wrapped cells in the changed columns
+    const changed = all ? null : new Set(list);
+    const rows: number[] = [];
+    for (const [r, row] of sheet.rows) {
+      for (const [c, cell] of row) {
+        if (changed && !changed.has(c)) continue;
+        if (st.wb.styles.get(cell.s ?? sheet.styleIdAt(r, c)).wrap) {
+          rows.push(r);
+          break;
+        }
       }
     }
-    tx.setMeta(sheet, 'colWidths', m);
-    if (hidden.size !== sheet.hiddenCols.size || [...hidden].some((c) => !sheet.hiddenCols.has(c))) tx.setMeta(sheet, 'hiddenCols', hidden);
+    refitRows(tx, sheet, rows, (r) => {
+      const now = sheet.colWidths;
+      const nowDef = sheet.defaultColWidth;
+      sheet.colWidths = before;
+      sheet.defaultColWidth = beforeDef;
+      const h = measureRow(sheet, r);
+      sheet.colWidths = now;
+      sheet.defaultColWidth = nowDef;
+      return h;
+    });
   });
 }
 
-export function setRowHeight(px: number, rows?: number[]): void {
+/** Standard Width: the default for columns that have no width of their own. */
+export function setStandardWidth(px: number): void {
+  const sheet = S().wb.activeSheet;
+  if (!guardSheet('formatColumns')) return;
+  transact('Standard Width', (tx) => tx.setMeta(sheet, 'defaultColWidth', Math.max(1, Math.round(px))));
+}
+
+/** Row height for the given rows, or the selection ('all' / every row selected → sheet default). */
+export function setRowHeight(px: number, rows?: number[] | 'all'): void {
   const st = S();
   const sheet = st.wb.activeSheet;
   if (!guardSheet('formatRows')) return;
-  const list = rows ?? selectedRows();
+  const h = Math.round(px);
+  // height 0 hides rows; for Select All only the rows in use are hidden
+  const all = h > 0 && (rows === 'all' || (rows === undefined && spansAllRows()));
   transact('Row Height', (tx) => {
+    if (all) {
+      tx.setMeta(sheet, 'defaultRowHeight', h);
+      tx.setMeta(sheet, 'rowHeights', new Map());
+      if (sheet.hiddenRows.size) tx.setMeta(sheet, 'hiddenRows', new Set());
+      return;
+    }
+    const list = Array.isArray(rows) ? rows : selectedRows();
     const m = new Map(sheet.rowHeights);
     const hidden = new Set(sheet.hiddenRows);
     for (const r of list) {
-      if (px <= 0) hidden.add(r);
+      if (h <= 0) hidden.add(r);
       else {
         hidden.delete(r);
-        m.set(r, Math.round(px));
+        m.set(r, h);
       }
     }
     tx.setMeta(sheet, 'rowHeights', m);
@@ -487,7 +550,7 @@ export function selectedRows(): number[] {
   return [...out];
 }
 
-/** Best-fit width for a column (Excel AutoFit). */
+/** Best-fit width for a column (Excel AutoFit); the sheet default when the column is empty. */
 export function measureColumn(sheet: Sheet, c: number, rowFilter?: (r: number) => boolean): number {
   const wb = S().wb;
   let max = 0;
@@ -502,47 +565,48 @@ export function measureColumn(sheet: Sheet, c: number, rowFilter?: (r: number) =
     if (style.wrap) {
       for (const line of text.split('\n')) max = Math.max(max, measureText(line, style));
     } else max = Math.max(max, measureText(text, style));
-    max += 0;
     if (style.indent) max = Math.max(max, measureText(text, style) + style.indent * 9);
   }
-  return max ? Math.ceil(max + 8) : DEFAULT_COL_WIDTH;
+  return max ? Math.ceil(max + 8) : sheet.defaultColWidth;
 }
 
 export function autoFitColumns(cols?: number[]): void {
   const sheet = S().wb.activeSheet;
-  const list = cols ?? selectedCols();
   const sel = S().sel;
+  // Select All / whole rows: only columns that hold data can change
+  const used = sheet.usedRange();
+  const list = (cols ?? selectedCols()).filter((c) => !used || c <= used.c2);
   const onlySelectedRows = sel.ranges.length === 1 && !isFullCols(sel.ranges[0]) && !cols;
   const rg = sel.ranges[0];
   transact('AutoFit Column Width', (tx) => {
     const m = new Map(sheet.colWidths);
-    for (const c of list.slice(0, 2000)) {
+    for (const c of list) {
       const w = measureColumn(sheet, c, onlySelectedRows ? (r) => r >= rg.r1 && r <= rg.r2 : undefined);
-      if (w === DEFAULT_COL_WIDTH) m.delete(c);
+      if (w === sheet.defaultColWidth) m.delete(c);
       else m.set(c, w);
     }
     tx.setMeta(sheet, 'colWidths', m);
   });
 }
 
+/** Height a row needs for its content (font sizes and wrapped text), in px at 100%. */
 export function measureRow(sheet: Sheet, r: number): number {
   const wb = S().wb;
   const row = sheet.rows.get(r);
   let h = DEFAULT_ROW_HEIGHT;
   const rs = sheet.rowStyles.get(r);
-  if (rs !== undefined) h = Math.max(h, lineHeight(wb.styles.get(rs)) + 4);
+  if (rs !== undefined) h = Math.max(h, rowLineHeight(wb.styles.get(rs)));
   if (!row) return h;
   for (const [c, cell] of row) {
     const style = wb.styles.get(cell.s ?? sheet.styleIdAt(r, c));
-    const lh = lineHeight(style);
+    const lh = rowLineHeight(style);
     let lines = 1;
-    if (cell.v !== undefined || cell.f !== undefined) {
-      if (style.wrap && !sheet.mergeAt(r, c)) {
-        const d = displayOf(sheet, r, c, style);
-        lines = wrapText(d.text, style, sheet.colWidth(c) - 6).length;
-      } else if (typeof cell.v === 'string' && cell.v.includes('\n') && style.wrap) lines = cell.v.split('\n').length;
+    if ((cell.v !== undefined || cell.f !== undefined) && style.wrap && !sheet.mergeAt(r, c)) {
+      const d = displayOf(sheet, r, c, style);
+      // numbers never wrap; text uses the same width the grid draws with
+      if (typeof d.value !== 'number') lines = wrapText(d.text, style, sheet.colWidth(c) - 5 - (style.indent ?? 0) * 9).length;
     }
-    h = Math.max(h, lines * lh + 5);
+    h = Math.max(h, lines * lh);
   }
   return Math.min(409 * (4 / 3), Math.ceil(h));
 }
@@ -554,25 +618,72 @@ export function autoFitRows(rows?: number[]): void {
     const m = new Map(sheet.rowHeights);
     for (const r of list.slice(0, 100000)) {
       const h = measureRow(sheet, r);
-      if (h === DEFAULT_ROW_HEIGHT) m.delete(r);
+      if (h === sheet.defaultRowHeight) m.delete(r);
       else m.set(r, h);
     }
     tx.setMeta(sheet, 'rowHeights', m);
   });
 }
 
-/** Excel auto-grows row heights when fonts get larger or text wraps (unless a custom height is set). */
+/** Px difference within which a row still counts as auto-fitted (files from Excel measure slightly differently). */
+const AUTO_TOLERANCE = 3;
+
+/**
+ * Re-fit rows whose height is automatic, like Excel: a row counts as automatic when its height
+ * matches what its previous content needed (`heightBefore`); rows sized by hand keep their height.
+ */
+function refitRows(tx: Tx, sheet: Sheet, rows: Iterable<number>, heightBefore: (r: number) => number): void {
+  let m: Map<number, number> | null = null;
+  for (const r of rows) {
+    if (sheet.hiddenRows.has(r)) continue;
+    const cur = sheet.rowHeights.get(r) ?? sheet.defaultRowHeight;
+    if (Math.abs(cur - heightBefore(r)) > AUTO_TOLERANCE) continue;
+    const h = measureRow(sheet, r);
+    if (h === cur) continue;
+    m ??= new Map(sheet.rowHeights);
+    if (h === sheet.defaultRowHeight) m.delete(r);
+    else m.set(r, h);
+  }
+  if (m) tx.setMeta(sheet, 'rowHeights', m);
+}
+
+/** After every edit: rows whose cells changed (typing, paste, fill, clear, format) grow or shrink to fit. */
+Tx.beforeFinish = (tx) => {
+  for (const [sid, rows] of tx.before) {
+    const sheet = tx.wb.sheetById(sid);
+    if (!sheet || rows.size > 5000) continue;
+    // sheet settings this transaction changed that affect measuring (e.g. Wrap on a whole column)
+    const metaBefore = new Map<MetaKey, unknown>();
+    for (const cmd of tx.cmds) {
+      if (cmd instanceof MetaCommand && cmd.sheetId === sid && MEASURE_KEYS.includes(cmd.key) && !metaBefore.has(cmd.key)) metaBefore.set(cmd.key, cmd.before);
+    }
+    refitRows(tx, sheet, rows.keys(), (r) => {
+      const cells = rows.get(r)!;
+      const now = [...cells.keys()].map((c) => [c, sheet.getCell(r, c)] as const);
+      const metaNow = [...metaBefore.keys()].map((k) => [k, sheet[k]] as const);
+      const raw = sheet as unknown as Record<string, unknown>;
+      for (const [k, v] of metaBefore) raw[k] = v;
+      for (const [c, cell] of cells) sheet.setCellRaw(r, c, cell);
+      const h = measureRow(sheet, r);
+      for (const [c, cell] of now) sheet.setCellRaw(r, c, cell);
+      for (const [k, v] of metaNow) raw[k] = v;
+      return h;
+    });
+  }
+};
+const MEASURE_KEYS: MetaKey[] = ['colStyles', 'rowStyles', 'colWidths', 'defaultColWidth', 'hiddenCols'];
+
+/** Whole rows whose row style changed font size: empty rows follow the new font (Excel). */
 export function autoRowHeights(tx: Tx, sheet: Sheet, ranges: Range[]): void {
   const m = new Map(sheet.rowHeights);
   let changed = false;
   for (const rg of ranges) {
-    if (isFullCols(rg)) continue;
+    if (!isFullRows(rg) || isFullCols(rg)) continue;
     for (let r = rg.r1; r <= Math.min(rg.r2, rg.r1 + 5000); r++) {
+      if (sheet.rows.has(r) || m.has(r)) continue; // rows with cells are re-fitted by the edit hook
       const h = measureRow(sheet, r);
-      const cur = m.get(r) ?? DEFAULT_ROW_HEIGHT;
-      if (h !== cur) {
-        if (h === DEFAULT_ROW_HEIGHT) m.delete(r);
-        else m.set(r, h);
+      if (h !== sheet.defaultRowHeight) {
+        m.set(r, h);
         changed = true;
       }
     }

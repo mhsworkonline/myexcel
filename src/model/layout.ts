@@ -1,6 +1,6 @@
 // Row/column geometry with sparse size overrides. Offsets are in px at 100% zoom.
 import { MAX_COLS, MAX_ROWS } from './address';
-import { DEFAULT_COL_WIDTH, DEFAULT_ROW_HEIGHT, Sheet } from './sheet';
+import { Sheet } from './sheet';
 
 export class AxisLayout {
   private keys: number[] = [];
@@ -74,16 +74,16 @@ export class AxisLayout {
 const cache = new WeakMap<Sheet, { rowsKey: unknown[]; colsKey: unknown[]; rows: AxisLayout; cols: AxisLayout }>();
 
 export function sheetLayout(sheet: Sheet): { rows: AxisLayout; cols: AxisLayout } {
-  const rowsKey = [sheet.rowHeights, sheet.hiddenRows, sheet.filteredRows];
-  const colsKey = [sheet.colWidths, sheet.hiddenCols];
+  const rowsKey = [sheet.rowHeights, sheet.hiddenRows, sheet.filteredRows, sheet.defaultRowHeight];
+  const colsKey = [sheet.colWidths, sheet.hiddenCols, sheet.defaultColWidth];
   let c = cache.get(sheet);
   if (!c || c.rowsKey.some((k, i) => k !== rowsKey[i]) || c.colsKey.some((k, i) => k !== colsKey[i])) {
     const rows =
       c && !c.rowsKey.some((k, i) => k !== rowsKey[i])
         ? c.rows
-        : new AxisLayout(DEFAULT_ROW_HEIGHT, sheet.rowHeights, [sheet.hiddenRows, sheet.filteredRows], MAX_ROWS);
+        : new AxisLayout(sheet.defaultRowHeight, sheet.rowHeights, [sheet.hiddenRows, sheet.filteredRows], MAX_ROWS);
     const cols =
-      c && !c.colsKey.some((k, i) => k !== colsKey[i]) ? c.cols : new AxisLayout(DEFAULT_COL_WIDTH, sheet.colWidths, [sheet.hiddenCols], MAX_COLS);
+      c && !c.colsKey.some((k, i) => k !== colsKey[i]) ? c.cols : new AxisLayout(sheet.defaultColWidth, sheet.colWidths, [sheet.hiddenCols], MAX_COLS);
     c = { rowsKey, colsKey, rows, cols };
     cache.set(sheet, c);
   }

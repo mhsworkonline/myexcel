@@ -9,6 +9,9 @@ import os from 'node:os';
 import path from 'node:path';
 
 const exe = process.argv[2] || path.resolve('src-tauri/target/release/myexcel.exe');
+// The test build (builds/test/...) has its own identity and app data folder.
+const isTest = /test/i.test(path.basename(exe));
+const appId = isTest ? 'app.myexcel.test' : 'app.myexcel.desktop';
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'myexcel-desktop-'));
 const file = path.join(dir, 'Budget.xlsx');
 const wbx = new ExcelJS.Workbook();
@@ -21,7 +24,15 @@ const results = [];
 const check = (name, ok, extra) => results.push(`${ok ? 'PASS' : 'FAIL'} ${name}${extra !== undefined ? ' :: ' + JSON.stringify(extra) : ''}`);
 
 const port = 9333;
-const child = spawn(exe, [file], { env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}` }, stdio: 'ignore' });
+// Leave any MyExcel window that is already open alone: keep its crash snapshots safe and use a
+// separate WebView2 profile (otherwise the new window would join the running browser process).
+const recoveryDir = path.join(process.env.APPDATA, appId, 'recovery');
+const keep = new Map();
+if (fs.existsSync(recoveryDir)) for (const f of fs.readdirSync(recoveryDir)) if (f.endsWith('.json')) keep.set(f, fs.readFileSync(path.join(recoveryDir, f)));
+const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'myexcel-wv2-'));
+const env = { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`, WEBVIEW2_USER_DATA_FOLDER: profile };
+const child = spawn(exe, [file], { env, stdio: 'ignore' });
+const childrenOf = (pid) => execSync(`powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'ParentProcessId=${pid}' | Where-Object { $_.Name -like 'MyExcel*' } | ForEach-Object { $_.ProcessId.ToString() + ' ' + $_.CommandLine }"`).toString().trim().split(/\r?\n/).filter((l) => /MyExcel/i.test(l));
 let browser;
 for (let i = 0; i < 40 && !browser; i++) {
   await new Promise((r) => setTimeout(r, 500));
@@ -55,11 +66,9 @@ check('opened file passed at launch', info.name === 'Budget' && info.cell === 'R
 check('formula computed', info.total === 1650, info.total);
 check('handle is the file path', typeof info.handle === 'string' && info.handle.toLowerCase().endsWith('budget.xlsx'), info.handle);
 
-// A snapshot left by a previous crash (this script kills the app while dirty) must be offered on launch
-const hadSnapshot = fs.existsSync(path.join(process.env.APPDATA, 'app.myexcel.desktop', 'recovery', 'snapshot.json'));
+// A snapshot left by a crashed window may be offered on launch; dismiss it (restored at the end)
 await page.waitForTimeout(800);
 const offered = await page.evaluate(() => window.__myexcel.S().dialog?.type === 'recovery');
-if (hadSnapshot) check('recovery offered after previous crash', offered);
 if (offered) await page.click('[data-testid="dialog-cancel"]'); // Discard
 
 // Edit and Ctrl+S → written straight back to disk, no dialog
@@ -83,18 +92,18 @@ await page.evaluate(async () => {
   const sh = X.S().wb.activeSheet;
   X.store.transact('t', (tx) => X.edit.writeInput(tx, sh, 5, 0, 'unsaved'));
 });
-const appDir = path.join(process.env.APPDATA, 'app.myexcel.desktop');
+const appDir = path.join(process.env.APPDATA, appId);
 const settingsPath = path.join(appDir, 'settings.json');
 const settings = fs.existsSync(settingsPath) ? JSON.parse(fs.readFileSync(settingsPath, 'utf8')) : null;
 check('settings.json in app config dir', !!settings && Array.isArray(settings.recentFiles), settings && { theme: settings.theme, recent: settings.recentFiles.length });
 check('recent files include launched file', !!settings && settings.recentFiles.some((r) => (r.path || '').toLowerCase() === file.toLowerCase()));
-const recoveryPath = path.join(appDir, 'recovery', 'snapshot.json');
+const recoveryPath = path.join(appDir, 'recovery', `snapshot-${child.pid}.json`);
 let recovered = false;
 for (let i = 0; i < 40 && !recovered; i++) {
   await new Promise((r) => setTimeout(r, 1000));
   recovered = fs.existsSync(recoveryPath);
 }
-check('recovery snapshot written within 30s while dirty', recovered);
+check('recovery snapshot written within 30s while dirty (one file per window)', recovered, path.basename(recoveryPath));
 if (recovered) {
   const rec = JSON.parse(fs.readFileSync(recoveryPath, 'utf8'));
   check('recovery snapshot has the unsaved edit', JSON.stringify(rec.data).includes('unsaved'), rec.fileName);
@@ -116,6 +125,7 @@ check('native clipboard CF_HTML (for Excel)', clipHtml.includes('StartFragment')
 // native window title follows file name / status
 const hwndTitle = execSync(`powershell -NoProfile -Command "(Get-Process -Id ${child.pid}).MainWindowTitle"`).toString().trim();
 check('native window title shows file + status', /Budget .*MyExcel/.test(hwndTitle), hwndTitle);
+if (isTest) check('test build marked in title', /MyExcel \(Test build \d+\)/.test(hwndTitle), hwndTitle);
 
 check('no CSP violations or console errors', consoleErrors.length === 0, consoleErrors.slice(0, 5));
 const net = await page.evaluate(async () => {
@@ -127,8 +137,47 @@ const net = await page.evaluate(async () => {
   }
 });
 check('CSP blocks network requests', net === 'blocked', net);
-// Close with unsaved changes: the native Save / Don't Save / Cancel prompt must keep the window open
-execSync(`powershell -NoProfile -Command "(Get-Process -Id ${child.pid}).CloseMainWindow() | Out-Null"`);
+// Test build: Help > Reload reloads the UI from disk and keeps the open, unsaved workbook
+if (isTest) {
+  const before = await page.evaluate(() => ({ name: window.__myexcel.S().file.name, handle: window.__myexcel.S().file.handle }));
+  await page.evaluate(() => window.__myexcel.file.snapshotForReload().then(() => location.reload()));
+  await page.waitForTimeout(1500);
+  await page.waitForFunction(() => window.__myexcel?.file && window.__myexcel.S().file.name === 'Budget', null, { timeout: 20000 }).catch(() => undefined);
+  const after = await page.evaluate(() => {
+    const st = window.__myexcel.S();
+    return { name: st.file.name, handle: st.file.handle, dirty: st.file.dirty, a6: st.wb.activeSheet.getCell(5, 0)?.v, dialog: st.dialog?.type ?? null };
+  });
+  check('reload keeps the workbook, path and unsaved edit', after.name === before.name && after.handle === before.handle && after.dirty && after.a6 === 'unsaved' && !after.dialog, after);
+}
+// One workbook per window: opening a file while this one is in use starts a new window with it
+const second = path.join(dir, 'Second.xlsx');
+fs.copyFileSync(file, second);
+await page.evaluate((p) => window.__myexcel.file.openPathInNewWindow(p), second);
+await new Promise((r) => setTimeout(r, 4000));
+const extraPids = [];
+let kids = childrenOf(child.pid);
+check('opening a file while one is open starts a new window with it', kids.some((l) => l.includes('Second.xlsx') && l.includes('--pos=')), kids);
+const secondTitle = kids.length ? execSync(`powershell -NoProfile -Command "(Get-Process -Id ${kids[0].split(' ')[0]}).MainWindowTitle"`).toString().trim() : '';
+check('the new window opened the file', /^Second/.test(secondTitle), secondTitle);
+for (const k of kids) {
+  const kpid = k.split(' ')[0];
+  execSync(`taskkill /F /PID ${kpid}`, { stdio: 'ignore' });
+  extraPids.push(kpid);
+}
+await page.keyboard.press('Control+n');
+await new Promise((r) => setTimeout(r, 3000));
+kids = childrenOf(child.pid);
+check('Ctrl+N opens a new window with a blank workbook', kids.length === 1 && !kids[0].includes('.xlsx'), kids);
+for (const k of kids) {
+  const kpid = k.split(' ')[0];
+  execSync(`taskkill /F /PID ${kpid}`, { stdio: 'ignore' });
+  extraPids.push(kpid);
+}
+check('this window still has its workbook', (await page.evaluate(() => window.__myexcel.S().file.name)) === 'Budget');
+
+// Ctrl+W with unsaved changes: the native Save / Don't Save / Cancel prompt must keep the window open
+await page.evaluate(() => document.querySelector('[data-testid="grid-canvas"]')?.focus());
+await page.keyboard.press('Control+w');
 await new Promise((r) => setTimeout(r, 2500));
 let alive = true;
 try {
@@ -137,7 +186,7 @@ try {
   alive = false;
 }
 const dialogShown = execSync(`powershell -NoProfile -ExecutionPolicy Bypass -File scripts/find-dialog.ps1 -ProcessId ${child.pid}`).toString().trim();
-check('close with unsaved changes shows native prompt and keeps window open', alive && dialogShown === '1', { alive, dialogShown });
+check('Ctrl+W with unsaved changes shows the native prompt and keeps the window open', alive && dialogShown === '1', { alive, dialogShown });
 
 console.log(results.join('\n'));
 await browser.close().catch(() => undefined);
@@ -149,11 +198,14 @@ try {
 }
 // leave no test traces in the real app data: drop the temp file from Recent and the crash snapshot
 await new Promise((r) => setTimeout(r, 500));
-const appData = path.join(process.env.APPDATA, 'app.myexcel.desktop');
+const appData = path.join(process.env.APPDATA, appId);
 const sp = path.join(appData, 'settings.json');
 if (fs.existsSync(sp)) {
   const st = JSON.parse(fs.readFileSync(sp, 'utf8'));
   st.recentFiles = (st.recentFiles || []).filter((r) => !(r.path || '').toLowerCase().includes('myexcel-desktop-'));
   fs.writeFileSync(sp, JSON.stringify(st, null, 2));
 }
-fs.rmSync(path.join(appData, 'recovery', 'snapshot.json'), { force: true });
+// remove this run's snapshot/lock and bring back snapshots that belonged to other windows
+for (const f of [child.pid, ...extraPids].flatMap((id) => [`snapshot-${id}.json`, `owner-${id}.lock`])) fs.rmSync(path.join(recoveryDir, f), { force: true });
+for (const [f, data] of keep) if (!fs.existsSync(path.join(recoveryDir, f))) fs.writeFileSync(path.join(recoveryDir, f), data);
+fs.rmSync(profile, { recursive: true, force: true });

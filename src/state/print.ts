@@ -10,7 +10,7 @@ import { renderGrid } from '../ui/grid/render';
 import { LIGHT } from '../ui/theme';
 import { fileAdapter, FILTERS } from '../io/FileAdapter';
 import { chartData } from './charts';
-import { S } from './store';
+import { bump, S, setState, transact } from './store';
 
 export const PAPER: Record<PageSetup['paperSize'], [number, number]> = {
   letter: [8.5, 11],
@@ -267,4 +267,76 @@ export async function exportPdf(pages?: PageInfo[], override?: Partial<PageSetup
   }
   const bytes = new Uint8Array(doc.output('arraybuffer'));
   await fileAdapter().saveAs(bytes, `${S().file.name}.pdf`, [FILTERS.pdf]);
+}
+
+// ---- View modes ----
+
+const viewZoom = new WeakMap<Sheet, { normal: number; pageBreak: number }>();
+
+/** Switch views. As in Excel, Page Break Preview keeps its own zoom (60% at first) so whole pages are visible. */
+export function setViewMode(mode: 'normal' | 'pageBreak' | 'pageLayout'): void {
+  const st = S();
+  const prev = st.viewMode;
+  if (prev === mode) return;
+  const sheet = st.wb.activeSheet;
+  const z = viewZoom.get(sheet) ?? { normal: sheet.zoom, pageBreak: 60 };
+  if (mode === 'pageBreak') {
+    z.normal = sheet.zoom;
+    sheet.zoom = z.pageBreak;
+  } else if (prev === 'pageBreak') {
+    z.pageBreak = sheet.zoom;
+    sheet.zoom = z.normal;
+  }
+  viewZoom.set(sheet, z);
+  sheet.touch();
+  setState({ viewMode: mode });
+  bump();
+}
+
+// ---- Manual page breaks (stored as the last row/column of a page) ----
+
+const sortUniq = (a: number[]) => [...new Set(a)].filter((x) => x >= 0).sort((x, y) => x - y);
+
+/** Insert Page Break: above the active row and left of the active column (only one if it's in row 1 / column A). */
+export function insertPageBreak(): void {
+  const sheet = S().wb.activeSheet;
+  const { r, c } = S().sel.active;
+  transact('Insert Page Break', (tx) => {
+    if (r > 0) tx.setMeta(sheet, 'rowBreaks', sortUniq([...sheet.rowBreaks, r - 1]));
+    if (c > 0) tx.setMeta(sheet, 'colBreaks', sortUniq([...sheet.colBreaks, c - 1]));
+  });
+}
+
+/** Remove Page Break: the manual breaks on the active cell's top and left edges. */
+export function removePageBreak(): void {
+  const sheet = S().wb.activeSheet;
+  const { r, c } = S().sel.active;
+  transact('Remove Page Break', (tx) => {
+    if (sheet.rowBreaks.includes(r - 1)) tx.setMeta(sheet, 'rowBreaks', sheet.rowBreaks.filter((b) => b !== r - 1));
+    if (sheet.colBreaks.includes(c - 1)) tx.setMeta(sheet, 'colBreaks', sheet.colBreaks.filter((b) => b !== c - 1));
+  });
+}
+
+export function resetPageBreaks(): void {
+  const sheet = S().wb.activeSheet;
+  transact('Reset All Page Breaks', (tx) => {
+    tx.setMeta(sheet, 'rowBreaks', []);
+    tx.setMeta(sheet, 'colBreaks', []);
+  });
+}
+
+/**
+ * Page Break Preview drag: the break that started page `from` now starts page `to`. The moved
+ * break becomes manual; dragging it off the printed area removes it.
+ */
+export function movePageBreak(axis: 'row' | 'col', from: number, to: number): void {
+  if (from === to) return;
+  const sheet = S().wb.activeSheet;
+  const pages = paginate(sheet);
+  const lo = Math.min(...pages.map((p) => (axis === 'row' ? p.rows[0] : p.cols[0])));
+  const hi = Math.max(...pages.map((p) => (axis === 'row' ? p.rows[1] : p.cols[1])));
+  const key = axis === 'row' ? 'rowBreaks' : 'colBreaks';
+  const list = sheet[key].filter((b) => b !== from - 1);
+  if (to > lo && to <= hi) list.push(to - 1);
+  transact('Move Page Break', (tx) => tx.setMeta(sheet, key, sortUniq(list)));
 }

@@ -182,9 +182,9 @@ export function PageLayoutTab() {
           icon={<Rows3 size={26} className="text-[#2B7CD3]" />}
           label="Breaks"
           menu={[
-            { label: 'Insert Page Break', onClick: () => setSheetMeta('rowBreaks', [...new Set([...sheetOf().rowBreaks, S().sel.active.r - 1])].filter((x) => x >= 0).sort((a, b) => a - b), 'Insert Page Break') },
-            { label: 'Remove Page Break', onClick: () => setSheetMeta('rowBreaks', sheetOf().rowBreaks.filter((b) => b !== S().sel.active.r - 1), 'Remove Page Break') },
-            { label: 'Reset All Page Breaks', onClick: () => { setSheetMeta('rowBreaks', [], 'Reset Page Breaks'); setSheetMeta('colBreaks', [], 'Reset Page Breaks'); } },
+            { label: 'Insert Page Break', onClick: () => import('../../state/print').then((m) => m.insertPageBreak()) },
+            { label: 'Remove Page Break', onClick: () => import('../../state/print').then((m) => m.removePageBreak()) },
+            { label: 'Reset All Page Breaks', onClick: () => import('../../state/print').then((m) => m.resetPageBreaks()) },
           ]}
         />
         <LargeButton icon={<PanelTop size={26} className="text-[#2B7CD3]" />} label={'Print\nTitles'} onClick={() => openDialog('pageSetup', { tab: 'Sheet' })} />
@@ -414,8 +414,8 @@ export function ViewTab() {
   return (
     <>
       <Group label="Workbook Views">
-        <LargeButton icon={<Grid3x3 size={26} className="text-[#2B7CD3]" />} label="Normal" checked={viewMode === 'normal'} onClick={() => setState({ viewMode: 'normal' })} />
-        <LargeButton icon={<Rows3 size={26} className="text-[#2B7CD3]" />} label={'Page Break\nPreview'} checked={viewMode === 'pageBreak'} onClick={() => setState({ viewMode: 'pageBreak' })} />
+        <LargeButton icon={<Grid3x3 size={26} className="text-[#2B7CD3]" />} label="Normal" checked={viewMode === 'normal'} onClick={() => import('../../state/print').then((m) => m.setViewMode('normal'))} />
+        <LargeButton icon={<Rows3 size={26} className="text-[#2B7CD3]" />} label={'Page Break\nPreview'} checked={viewMode === 'pageBreak'} onClick={() => import('../../state/print').then((m) => m.setViewMode('pageBreak'))} />
         <LargeButton icon={<FileText size={26} className="text-[#2B7CD3]" />} label={'Page\nLayout'} onClick={() => openDialog('print')} />
       </Group>
       <Group label="Show">

@@ -3,7 +3,7 @@ import { ArrowLeft, FilePlus, FileText, FolderOpen, Info, Printer, Save, SaveAll
 import { useEffect, useState } from 'react';
 import { AppSettings, fileAdapter, RecentFile } from '../io/FileAdapter';
 import { applyTheme, loadSettings, updateSettings } from '../state/settings';
-import { newWorkbook, openFile, saveAs, saveFile } from '../state/actions/file';
+import { closeWorkbook, newWorkbook, openFile, openPathInNewWindow, saveAs, saveFile } from '../state/actions/file';
 import { alertBox, openDialog, S, setState, useStore } from '../state/store';
 
 type Page = 'home' | 'new' | 'open' | 'info' | 'saveas' | 'export' | 'options' | 'about';
@@ -50,7 +50,7 @@ export function Backstage() {
             onClick={() => {
               if (k === 'save') { saveFile(); close(); return; }
               if (k === 'print') { close(); openDialog('print'); return; }
-              if (k === 'close') { newWorkbook(); close(); return; }
+              if (k === 'close') { close(); closeWorkbook(); return; }
               setPage(k as Page);
             }}
             data-testid={`bs-${k}`}
@@ -147,6 +147,10 @@ function RecentList({ recent }: { recent: RecentFile[] }) {
           onClick={async () => {
             const fa = fileAdapter();
             if (fa.openRecent && r.path) {
+              if (openPathInNewWindow(r.path)) {
+                setState({ backstage: false });
+                return;
+              }
               const f = await fa.openRecent(r);
               if (f) {
                 const { openFromData } = await import('../state/actions/file');

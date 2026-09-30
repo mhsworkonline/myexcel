@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MyExcel (Test)",
+  "mainBinaryName": "MyExcel-Test",
+  "identifier": "app.myexcel.test",
+  "build": { "beforeBuildCommand": "" },
+  "app": { "windows": [{ "label": "main", "title": "MyExcel (Test)", "width": 1440, "height": 900, "minWidth": 900, "minHeight": 600, "center": true, "dragDropEnabled": false, "zoomHotkeysEnabled": false }] },
+  "bundle": { "active": false, "fileAssociations": [] }
+}

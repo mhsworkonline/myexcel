@@ -45,29 +45,46 @@ export function measureText(text: string, style: CellStyle): number {
   return w;
 }
 
-/** Word-wrap text into lines that fit `width` px (100% zoom). */
-export function wrapText(text: string, style: CellStyle, width: number): string[] {
+/**
+ * Excel-style word wrap shared by drawing and row auto-fit: breaks at spaces and after hyphens,
+ * keeps explicit line breaks, and splits a word that is wider than the cell on its own.
+ */
+export function wrapLines(text: string, width: number, measure: (s: string) => number): string[] {
   const out: string[] = [];
   for (const para of text.split('\n')) {
-    const words = para.split(/(\s+)/);
+    const words = para.split(/(\s+)|(?<=-)/).filter(Boolean);
     let line = '';
     for (const w of words) {
       const cand = line + w;
-      if (line && measureText(cand.trimEnd(), style) > width) {
+      if (measure(cand.trimEnd()) <= width) {
+        line = cand;
+        continue;
+      }
+      if (line.trim()) {
         out.push(line.trimEnd());
         line = w.trimStart();
-        // break very long words
-        while (measureText(line, style) > width && line.length > 1) {
-          let k = line.length - 1;
-          while (k > 1 && measureText(line.slice(0, k), style) > width) k--;
-          out.push(line.slice(0, k));
-          line = line.slice(k);
-        }
       } else line = cand;
+      // a single word wider than the cell is split where it overflows
+      while (line.length > 1 && measure(line) > width) {
+        let k = line.length - 1;
+        while (k > 1 && measure(line.slice(0, k)) > width) k--;
+        out.push(line.slice(0, k));
+        line = line.slice(k);
+      }
     }
-    out.push(line);
+    out.push(line.trimEnd());
   }
   return out;
+}
+
+/** Word-wrap text into lines that fit `width` px (100% zoom). */
+export function wrapText(text: string, style: CellStyle, width: number): string[] {
+  return wrapLines(text, width, (s) => measureText(s, style));
+}
+
+/** Row height one line of text needs, px at 100%, close to Excel's (Calibri 11 → 20, 14 → 25). */
+export function rowLineHeight(style: CellStyle): number {
+  return Math.round(ptToPx(style.fontSize ?? DEFAULT_FONT_SIZE) * 1.33 + 0.5);
 }
 
 export function lineHeight(style: CellStyle): number {

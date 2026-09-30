@@ -23,6 +23,7 @@ function zoomBy(d: number): void {
 /** Menu ids (src-tauri/src/lib.rs) → the same actions the ribbon and shortcuts use. */
 export const MENU_COMMANDS: Record<string, () => void> = {
   new: () => file.newWorkbook(),
+  close: () => file.closeWorkbook(),
   open: () => file.openFile(),
   recent: () => setState({ backstage: true, backstagePage: 'open' }),
   save: () => void file.saveFile(),
@@ -60,13 +61,27 @@ export const MENU_COMMANDS: Record<string, () => void> = {
     freezePanes(sh.freeze.rows || sh.freeze.cols ? 'unfreeze' : 'panes');
   },
   shortcuts: () => openDialog('shortcuts'),
+  // Test build only (the menu item exists only there): pick up a freshly deployed UI.
+  reload: async () => {
+    await file.snapshotForReload();
+    location.reload();
+  },
   about: () => setState({ backstage: true, backstagePage: 'about' }),
 };
+
+/** "test" in the side-by-side test build, whose title also carries the UI build number. */
+let channel: 'release' | 'test' = 'release';
+
+function appTitle(): string {
+  if (channel !== 'test') return 'MyExcel';
+  const n = process.env.NEXT_PUBLIC_TEST_BUILD;
+  return `MyExcel (Test${n ? ' build ' + n : ''})`;
+}
 
 function windowTitle(): string {
   const f = S().file;
   const status = f.saving ? 'Saving…' : f.dirty ? 'Not saved' : f.lastSaved ? 'Saved' : '';
-  return `${f.name}${status ? ' • ' + status : ''} – MyExcel`;
+  return `${f.name}${status ? ' • ' + status : ''} – ${appTitle()}`;
 }
 
 /** Native "save changes?" prompt; resolves true when the window may close. */
@@ -86,6 +101,12 @@ async function confirmClose(): Promise<boolean> {
 
 export async function installDesktop(adapter: TauriFileAdapter): Promise<void> {
   const m = await import('../io/TauriFileAdapter');
+  const { invoke } = await import('@tauri-apps/api/core');
+  channel = await invoke<'release' | 'test'>('build_channel').catch(() => 'release' as const);
+  file.setWindowOps({
+    open: (path) => invoke('open_window', { path: path ?? null }),
+    close: () => import('@tauri-apps/api/window').then((w) => w.getCurrentWindow().close()),
+  });
   setNativeClipboard({ read: m.nativeClipboardRead, write: m.nativeClipboardWrite });
   const { useStore } = await import('../state/store');
   await m.installDesktopBridge({

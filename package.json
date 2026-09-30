@@ -11,7 +11,9 @@
     "e2e": "playwright test",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "testbuild:app": "node scripts/testbuild.mjs app",
+    "testbuild:ui": "node scripts/testbuild.mjs ui"
   },
   "dependencies": {
     "@fontsource/carlito": "^5.3.0",

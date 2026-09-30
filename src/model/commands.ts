@@ -175,6 +175,11 @@ export class History {
 export class Tx {
   cmds: Command[] = [];
   private pending = new Map<string, Map<string, CellDelta>>();
+  /** Every cell written in this transaction as it was before (sheet id → row → col → cell). */
+  readonly before = new Map<string, Map<number, Map<number, Cell | undefined>>>();
+  /** Runs once before a transaction is finalised (the state layer re-fits row heights here). */
+  static beforeFinish: ((tx: Tx) => void) | null = null;
+  private finishing = false;
 
   constructor(public wb: Workbook, public label: string) {}
 
@@ -189,6 +194,11 @@ export class Tx {
     const prev = m.get(key);
     const before = prev ? prev.before : sheet.getCell(r, c);
     m.set(key, { r, c, before, after: cell });
+    let bs = this.before.get(sheet.id);
+    if (!bs) this.before.set(sheet.id, (bs = new Map()));
+    let br = bs.get(r);
+    if (!br) bs.set(r, (br = new Map()));
+    if (!br.has(c)) br.set(c, before);
     sheet.setCellRaw(r, c, cell);
   }
 
@@ -233,6 +243,10 @@ export class Tx {
 
   /** Finalises the transaction; returns the composite command or null if nothing changed. */
   finish(): Command | null {
+    if (Tx.beforeFinish && !this.finishing) {
+      this.finishing = true;
+      Tx.beforeFinish(this);
+    }
     this.flush();
     if (!this.cmds.length) return null;
     return this.cmds.length === 1 ? Object.assign(this.cmds[0], { label: this.label }) : new CompositeCommand(this.label, this.cmds);

@@ -1,13 +1,13 @@
 'use client';
 import { AlertTriangle, CircleX, Info } from 'lucide-react';
 import { useState } from 'react';
-import { DEFAULT_COL_WIDTH, DEFAULT_ROW_HEIGHT } from '../../model/sheet';
+import { DEFAULT_ROW_HEIGHT } from '../../model/sheet';
 import { primaryRange } from '../../model/selection';
 import { applyCommittedText, commitEdit } from '../../state/actions/edit';
 import { clearAutosave, recoverAutosave, saveAs, SaveFormat } from '../../state/actions/file';
 import { fillSeries } from '../../state/actions/fill';
 import { goTo, goToSpecial, SpecialKind } from '../../state/actions/find';
-import { selectedCols, selectedRows, setColumnWidth, setRowHeight } from '../../state/actions/format';
+import { setColumnWidth, setRowHeight, setStandardWidth } from '../../state/actions/format';
 import { copySheet, deleteCells, insertCells, moveSheet, ShiftDir, unhideSheet } from '../../state/actions/structure';
 import { bump, closeDialog, S, setState, useStore } from '../../state/store';
 import { Dialog, Field } from './Dialog';
@@ -102,7 +102,7 @@ export function SizeDialog({ axis, props }: { axis: 'row' | 'col'; props: P }) {
   const a = S().sel.active;
   const standard = !!props.standard;
   const cur = axis === 'row' ? sheet.rowHeight(a.r) : sheet.colWidth(a.c);
-  const init = axis === 'row' ? (cur * 0.75).toFixed(2).replace(/\.?0+$/, '') : ((standard ? DEFAULT_COL_WIDTH : cur) - 5) / 7;
+  const init = axis === 'row' ? (cur * 0.75).toFixed(2).replace(/\.?0+$/, '') : ((standard ? sheet.defaultColWidth : cur) - 5) / 7;
   const [v, setV] = useState(String(typeof init === 'number' ? +init.toFixed(2) : init));
   return (
     <Dialog
@@ -114,8 +114,9 @@ export function SizeDialog({ axis, props }: { axis: 'row' | 'col'; props: P }) {
           import('../../state/store').then((m) => m.alertBox(axis === 'row' ? 'Row height must be between 0 and 409.' : 'Column width must be between 0 and 255 characters.'));
           return false;
         }
-        if (axis === 'row') setRowHeight(Math.round(n / 0.75), selectedRows());
-        else setColumnWidth(n === 0 ? 0 : Math.round(n * 7 + 5), standard ? undefined : selectedCols());
+        if (axis === 'row') setRowHeight(Math.round(n / 0.75));
+        else if (standard) setStandardWidth(Math.round(n * 7 + 5));
+        else setColumnWidth(n === 0 ? 0 : Math.round(n * 7 + 5));
       }}
     >
       <Field label={axis === 'row' ? 'Row height:' : standard ? 'Standard column width:' : 'Column width:'}>

@@ -44,13 +44,18 @@ export class TauriFileAdapter implements FileAdapter {
     return p.join(dir, 'settings.json');
   }
 
+  /** This window's snapshot (one per window, so several open windows don't overwrite each other). */
   private async recoveryFile(): Promise<string> {
     const p = await paths();
     const dir = await p.join(await p.appDataDir(), 'recovery');
     const f = await fs();
     if (!(await f.exists(dir))) await f.mkdir(dir, { recursive: true });
-    return p.join(dir, 'snapshot.json');
+    const { invoke } = await import('@tauri-apps/api/core');
+    return p.join(dir, `snapshot-${await invoke<number>('instance_id')}.json`);
   }
+
+  /** A crashed window's snapshot offered by readRecovery; removed by clearRecovery. */
+  private claimed: string | null = null;
 
   async readPath(path: string): Promise<OpenedFile> {
     const f = await fs();
@@ -133,25 +138,39 @@ export class TauriFileAdapter implements FileAdapter {
     await atomicWriteText(await this.recoveryFile(), JSON.stringify(rec));
   }
 
+  /** This window's own snapshot (after Help > Reload), else the newest one left by a window that crashed. */
   async readRecovery(): Promise<RecoveryRecord | null> {
     try {
       const f = await fs();
-      const file = await this.recoveryFile();
-      if (!(await f.exists(file))) return null;
-      return JSON.parse(await f.readTextFile(file)) as RecoveryRecord;
+      const own = await this.recoveryFile();
+      if (await f.exists(own)) return JSON.parse(await f.readTextFile(own)) as RecoveryRecord;
+      const { invoke } = await import('@tauri-apps/api/core');
+      for (const file of await invoke<string[]>('recovery_candidates')) {
+        try {
+          const rec = JSON.parse(await f.readTextFile(file)) as RecoveryRecord;
+          this.claimed = file;
+          return rec;
+        } catch {
+          await f.remove(file).catch(() => undefined); // unreadable leftover
+        }
+      }
+      return null;
     } catch {
       return null;
     }
   }
 
   async clearRecovery(): Promise<void> {
-    try {
-      const f = await fs();
-      const file = await this.recoveryFile();
-      if (await f.exists(file)) await f.remove(file);
-    } catch {
-      /* ignore */
+    const f = await fs();
+    for (const file of [await this.recoveryFile().catch(() => null), this.claimed]) {
+      if (!file) continue;
+      try {
+        if (await f.exists(file)) await f.remove(file);
+      } catch {
+        /* ignore */
+      }
     }
+    this.claimed = null;
   }
 }
 

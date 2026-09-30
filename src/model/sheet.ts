@@ -29,6 +29,9 @@ export function newId(prefix = 'id'): string {
 export interface SheetMeta {
   colWidths: Map<number, number>;
   rowHeights: Map<number, number>;
+  /** Size of every column/row without its own entry (Select All + resize, Standard Width, files). */
+  defaultColWidth: number;
+  defaultRowHeight: number;
   hiddenRows: Set<number>;
   hiddenCols: Set<number>;
   colStyles: Map<number, number>;
@@ -66,6 +69,8 @@ export class Sheet implements SheetMeta {
   rows = new Map<number, Map<number, Cell>>();
   colWidths = new Map<number, number>();
   rowHeights = new Map<number, number>();
+  defaultColWidth = DEFAULT_COL_WIDTH;
+  defaultRowHeight = DEFAULT_ROW_HEIGHT;
   hiddenRows = new Set<number>();
   hiddenCols = new Set<number>();
   colStyles = new Map<number, number>();
@@ -213,12 +218,12 @@ export class Sheet implements SheetMeta {
 
   colWidth(c: number): number {
     if (this.hiddenCols.has(c)) return 0;
-    return this.colWidths.get(c) ?? DEFAULT_COL_WIDTH;
+    return this.colWidths.get(c) ?? this.defaultColWidth;
   }
 
   rowHeight(r: number): number {
     if (this.isRowHidden(r)) return 0;
-    return this.rowHeights.get(r) ?? DEFAULT_ROW_HEIGHT;
+    return this.rowHeights.get(r) ?? this.defaultRowHeight;
   }
 
   mergeAt(r: number, c: number): Range | undefined {
@@ -312,6 +317,8 @@ function shiftSet(s: Set<number>, at: number, delta: number, max: number): Set<n
 export const META_KEYS: MetaKey[] = [
   'colWidths',
   'rowHeights',
+  'defaultColWidth',
+  'defaultRowHeight',
   'hiddenRows',
   'hiddenCols',
   'colStyles',

@@ -89,13 +89,13 @@ export function StatusBar() {
         </div>
       )}
       <div className="flex items-center gap-0.5">
-        <button className={'xl-status-btn ' + (viewMode === 'normal' ? 'xl-status-btn-active' : '')} title="Normal" onClick={() => setState({ viewMode: 'normal' })}>
+        <button className={'xl-status-btn ' + (viewMode === 'normal' ? 'xl-status-btn-active' : '')} title="Normal" onClick={() => import('../state/print').then((m) => m.setViewMode('normal'))}>
           <Grid3x3 size={14} />
         </button>
         <button className="xl-status-btn" title="Page Layout" onClick={() => openDialog('print')}>
           <FileText size={14} />
         </button>
-        <button className={'xl-status-btn ' + (viewMode === 'pageBreak' ? 'xl-status-btn-active' : '')} title="Page Break Preview" onClick={() => setState({ viewMode: 'pageBreak' })}>
+        <button className={'xl-status-btn ' + (viewMode === 'pageBreak' ? 'xl-status-btn-active' : '')} title="Page Break Preview" onClick={() => import('../state/print').then((m) => m.setViewMode('pageBreak'))}>
           <Rows3 size={14} />
         </button>
       </div>

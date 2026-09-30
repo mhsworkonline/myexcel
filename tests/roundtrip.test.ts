@@ -35,6 +35,9 @@ function buildWorkbook(): { wb: Workbook; engine: Engine } {
   s.tabColor = '#FF0000';
   const other = new Sheet('Other');
   other.setCellRaw(0, 0, { v: 21 });
+  // Select All + resize: sheet-wide default sizes
+  other.defaultColWidth = 100;
+  other.defaultRowHeight = 30;
   wb.sheets.push(other);
   const engine = new Engine(wb);
   engine.attach();
@@ -74,6 +77,8 @@ describe('xlsx round-trip', () => {
     expect(s.freeze).toEqual({ rows: 1, cols: 1 });
     expect(s.merges).toEqual([{ r1: 6, c1: 0, r2: 7, c2: 2 }]);
     expect(s.tabColor).toBe('#FF0000');
+    expect([back.sheets[1].defaultColWidth, back.sheets[1].defaultRowHeight]).toEqual([100, 30]);
+    expect([s.defaultColWidth, s.defaultRowHeight]).toEqual([64, 20]);
     // formulas still compute after reload
     const eng2 = new Engine(back);
     eng2.attach();

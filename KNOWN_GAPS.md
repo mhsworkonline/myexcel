@@ -46,7 +46,7 @@ Everything below works differently from Microsoft Excel or isn't implemented. It
 ## Printing and PDF
 - Pages are rendered as images, so text in exported PDFs isn't selectable or searchable.
 - Header/footer codes supported: page, pages, date, time, file name, sheet name. Pictures and per-section fonts in headers/footers aren't.
-- Page Break Preview shows automatic and manual breaks but breaks can't be dragged; manual column breaks can only come from files.
+- Page Break Preview: page breaks can be dragged, but the print area's outer edge can't (set it with Page Layout > Print Area). Dragging a break past a full page doesn't rescale the sheet as Excel does.
 - "Print Selection" prints the last selected range only.
 
 ## Files
@@ -64,10 +64,10 @@ Everything below works differently from Microsoft Excel or isn't implemented. It
 - Office Add-ins, Copilot, Analyze Data, co-authoring, version history and cloud sharing aren't part of a local-first single-user app. The Share button saves a copy.
 
 ## Desktop (Tauri, Windows)
-- Only one workbook per window, and a single window: opening a second file (double-click while running) starts a second instance rather than a new window in the first.
+- One workbook per window, as in Excel. Each window is a separate process, so there is no View > Switch Windows or Arrange All.
 - Native menu items show their shortcuts as labels; the shortcuts themselves are handled by the web UI (so they only act while the MyExcel window is focused, which is always the case for a menu).
 - Files opened through Recent/launch are accessed with scopes granted at pick time (persisted across restarts). A file moved or renamed outside MyExcel must be reopened through File > Open.
-- The recovery snapshot is one file per installation: if MyExcel crashes with two instances open, only the last snapshot written is offered.
+- After a crash, one recovery snapshot is offered per launch (newest first); others are offered the next time MyExcel starts.
 - Installers are unsigned (Windows SmartScreen will warn). Code signing needs a certificate.
 - The WebView2 bootstrapper in the installer downloads the runtime only on machines that don't have it (all current Windows 10/11 installs do).
 - macOS/Linux builds aren't configured or tested; the native clipboard commands are Windows-only (other platforms fall back to the web clipboard).

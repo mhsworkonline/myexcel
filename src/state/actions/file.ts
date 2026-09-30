@@ -9,7 +9,53 @@ import { displayTextAt } from './sortFilter';
 
 export type SaveFormat = 'xlsx' | 'csv' | 'tsv' | 'ods' | 'pdf';
 
+// ---- Windows (desktop): one workbook per window, like Excel ----
+
+export interface WindowOps {
+  /** Open a new window with this file, or with a blank workbook. */
+  open(path?: string): Promise<void>;
+  /** Close this window (the unsaved-changes prompt runs first). */
+  close(): Promise<void>;
+}
+let windows: WindowOps | null = null;
+/** Set by the desktop bridge; the web build keeps one workbook per tab. */
+export function setWindowOps(ops: WindowOps): void {
+  windows = ops;
+}
+
+/** An untouched new workbook, which opening a file replaces instead of opening another window. */
+export function isPristine(): boolean {
+  const st = S();
+  return !st.file.dirty && st.file.handle === undefined && !st.file.lastSaved && st.history.undoStack.length === 0 && st.wb.sheets.every((sh) => !sh.usedRange());
+}
+
+/** Web: replacing the open workbook asks first when it has unsaved changes. */
+function afterDiscardCheck(proceed: () => void): void {
+  if (!S().file.dirty) return proceed();
+  openDialog('confirm', { message: `Want to save your changes to '${S().file.name}'?
+
+Unsaved changes will be lost.`, okLabel: "Don't Save", onOk: proceed });
+}
+
+/** Open a file by path: in this window if it's an untouched new workbook, otherwise in a new window. Returns false if the caller should open it here. */
+export function openPathInNewWindow(path: string): boolean {
+  if (!windows || isPristine()) return false;
+  void windows.open(path);
+  return true;
+}
+
+/** File > Close / Ctrl+W: closes the window on desktop; on the web it starts a new blank workbook. */
+export function closeWorkbook(): void {
+  if (windows) void windows.close();
+  else newWorkbook();
+}
+
 export function newWorkbook(confirmed = false): void {
+  // Excel opens every new workbook in its own window
+  if (windows && !confirmed) {
+    void windows.open();
+    return;
+  }
   if (S().file.dirty && !confirmed) {
     openDialog('confirm', { message: `Want to save your changes to '${S().file.name}'?\n\nUnsaved changes will be lost.`, okLabel: "Don't Save", onOk: () => newWorkbook(true) });
     return;
@@ -53,7 +99,13 @@ export const OPEN_FILTERS: FileTypeFilter[] = [
 export async function openFile(): Promise<void> {
   const f = await fileAdapter().open(OPEN_FILTERS);
   if (!f) return;
-  await openFromData(f.name, f.data, f.handle);
+  if (typeof f.handle === 'string' && openPathInNewWindow(f.handle)) return;
+  afterDiscardCheck(() => void openFromData(f.name, f.data, f.handle));
+}
+
+/** A file dropped on the window (no path available): replaces the workbook after the unsaved-changes check. */
+export function openDropped(name: string, data: ArrayBuffer): void {
+  afterDiscardCheck(() => void openFromData(name, data));
 }
 
 export async function openFromData(name: string, data: ArrayBuffer, handle?: unknown): Promise<void> {
@@ -208,6 +260,8 @@ export async function recoverAutosave(): Promise<void> {
   if (!rec) return;
   const wb = Workbook.fromJSON(rec.data as Parameters<typeof Workbook.fromJSON>[0]);
   loadWorkbook(wb, { name: `${rec.fileName} (Recovered)`, handle: rec.path, format: 'xlsx', dirty: true });
+  // the recovered copy now belongs to this window: drop the old snapshot, the next autosave writes this window's own
+  await fileAdapter().clearRecovery();
   lastRev = -1;
 }
 
@@ -218,4 +272,39 @@ export async function clearAutosave(): Promise<void> {
   } catch {
     /* ignore */
   }
+}
+
+// ---- Test build: Help > Reload keeps the open workbook ----
+const RELOAD_KEY = 'myexcel.reloadRestore';
+
+/** Snapshot the open workbook (saved or not) so it survives a UI reload. */
+export async function snapshotForReload(): Promise<void> {
+  const st = S();
+  await fileAdapter().writeRecovery({
+    fileName: st.file.name,
+    path: typeof st.file.handle === 'string' ? st.file.handle : undefined,
+    savedAt: Date.now(),
+    data: st.wb.toJSON(),
+  });
+  sessionStorage.setItem(RELOAD_KEY, JSON.stringify({ dirty: st.file.dirty, format: st.file.format }));
+}
+
+/** After a reload started by snapshotForReload: reopen the workbook as it was. Returns true if it did. */
+export async function restoreAfterReload(): Promise<boolean> {
+  let meta: { dirty: boolean; format: FileState['format'] } | null = null;
+  try {
+    meta = JSON.parse(sessionStorage.getItem(RELOAD_KEY) || 'null');
+    sessionStorage.removeItem(RELOAD_KEY);
+  } catch {
+    return false;
+  }
+  if (!meta) return false;
+  const rec = await fileAdapter().readRecovery();
+  if (!rec) return false;
+  const wb = Workbook.fromJSON(rec.data as Parameters<typeof Workbook.fromJSON>[0]);
+  loadWorkbook(wb, { name: rec.fileName, handle: rec.path, format: meta.format, dirty: meta.dirty });
+  // A clean workbook needs no crash snapshot; a dirty one keeps it until saved, as usual.
+  if (!meta.dirty) await clearAutosave();
+  lastRev = -1;
+  return true;
 }

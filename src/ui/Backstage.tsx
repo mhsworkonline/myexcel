@@ -1,20 +1,26 @@
 'use client';
 import { ArrowLeft, FilePlus, FileText, FolderOpen, Info, Printer, Save, SaveAll, Download, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { fileAdapter, RecentFile } from '../io/FileAdapter';
+import { AppSettings, fileAdapter, RecentFile } from '../io/FileAdapter';
+import { applyTheme, loadSettings, updateSettings } from '../state/settings';
 import { newWorkbook, openFile, saveAs, saveFile } from '../state/actions/file';
-import { openDialog, S, setState, useStore } from '../state/store';
+import { alertBox, openDialog, S, setState, useStore } from '../state/store';
 
-type Page = 'home' | 'new' | 'open' | 'info' | 'saveas' | 'export' | 'about';
+type Page = 'home' | 'new' | 'open' | 'info' | 'saveas' | 'export' | 'options' | 'about';
 
 export function Backstage() {
   const open = useStore((s) => s.backstage);
+  const wantPage = useStore((s) => s.backstagePage);
   const file = useStore((s) => s.file);
   const [page, setPage] = useState<Page>('home');
   const [recent, setRecent] = useState<RecentFile[]>([]);
   useEffect(() => {
     if (open) fileAdapter().recentFiles().then(setRecent).catch(() => setRecent([]));
-  }, [open]);
+    if (open && wantPage) {
+      setPage(wantPage as Page);
+      setState({ backstagePage: null });
+    }
+  }, [open, wantPage]);
   if (!open) return null;
   const close = () => setState({ backstage: false });
   const nav: [Page | 'save' | 'print' | 'close', string, React.ReactNode][] = [
@@ -54,6 +60,7 @@ export function Backstage() {
           </button>
         ))}
         <div className="flex-1" />
+        <button className={'px-5 py-2.5 text-left text-[13.5px] hover:bg-white/10 ' + (page === 'options' ? 'bg-white/20' : '')} onClick={() => setPage('options')} data-testid="bs-options">Options</button>
         <button className={'px-5 py-2.5 text-left text-[13.5px] hover:bg-white/10 ' + (page === 'about' ? 'bg-white/20' : '')} onClick={() => setPage('about')}>About</button>
       </div>
       <div className="flex-1 overflow-auto p-10">
@@ -114,6 +121,7 @@ export function Backstage() {
             ))}
           </div>
         )}
+        {page === 'options' && <OptionsPage />}
         {page === 'about' && (
           <div className="max-w-[560px] leading-6">
             <h1 className="text-[26px] mb-6 font-light">About MyExcel</h1>
@@ -130,29 +138,93 @@ export function Backstage() {
 function RecentList({ recent }: { recent: RecentFile[] }) {
   if (!recent.length) return <div className="opacity-60">No recent files.</div>;
   return (
-    <div className="flex flex-col max-w-[640px]">
+    <div className="flex flex-col max-w-[700px]" data-testid="recent-list">
       {recent.map((r) => (
         <button
-          key={r.name + r.opened}
+          key={(r.path ?? r.name) + r.opened}
           className="flex items-center gap-3 px-3 py-2 rounded hover:bg-[var(--hover)] text-left"
+          title={r.path ?? r.name}
           onClick={async () => {
             const fa = fileAdapter();
-            if (fa.openRecent) {
+            if (fa.openRecent && r.path) {
               const f = await fa.openRecent(r);
               if (f) {
                 const { openFromData } = await import('../state/actions/file');
                 await openFromData(f.name, f.data, f.handle);
                 return;
               }
+              alertBox(`Sorry, we couldn't find ${r.path}. Is it possible it was moved, renamed or deleted?`, 'MyExcel', 'error');
+              const cur = await fa.loadSettings();
+              await fa.saveSettings({ ...cur, recentFiles: cur.recentFiles.filter((x) => x.path !== r.path) });
+              return;
             }
             openFile();
           }}
         >
           <FileText size={18} className="text-[#107C41]" />
-          <span className="flex-1 truncate">{r.name}</span>
+          <span className="flex-1 min-w-0">
+            <span className="block truncate">{r.name}</span>
+            {r.path && <span className="block truncate text-[11px] opacity-60">{dirOf(r.path)}</span>}
+          </span>
           <span className="opacity-60 text-[11px]">{new Date(r.opened).toLocaleDateString()}</span>
         </button>
       ))}
+    </div>
+  );
+}
+
+function dirOf(p: string): string {
+  const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
+  return i > 0 ? p.slice(0, i) : p;
+}
+
+const FONT_CHOICES = ['Calibri', 'Aptos', 'Arial', 'Cambria', 'Carlito', 'Consolas', 'Georgia', 'Segoe UI', 'Tahoma', 'Times New Roman', 'Verdana'];
+
+function OptionsPage() {
+  const [s, setS] = useState<AppSettings | null>(null);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    loadSettings().then((x) => setS({ ...x }));
+  }, []);
+  if (!s) return null;
+  const save = async (patch: Partial<AppSettings>) => {
+    setS({ ...s, ...patch });
+    if (patch.theme) applyTheme(patch.theme);
+    await updateSettings(patch);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1500);
+  };
+  return (
+    <div className="max-w-[560px]" data-testid="options-page">
+      <h1 className="text-[26px] mb-6 font-light">Options</h1>
+      <div className="grid grid-cols-[220px_1fr] gap-y-4 items-center">
+        <span>Office Theme</span>
+        <select className="xl-input w-48" value={s.theme} onChange={(e) => save({ theme: e.target.value as AppSettings['theme'] })} data-testid="opt-theme">
+          <option value="light">Colorful (light)</option>
+          <option value="dark">Black (dark)</option>
+        </select>
+        <span>Use this as the default font</span>
+        <select className="xl-input w-48" value={s.defaultFont} onChange={(e) => save({ defaultFont: e.target.value })} data-testid="opt-font">
+          {FONT_CHOICES.map((f) => (
+            <option key={f} value={f}>{f}</option>
+          ))}
+        </select>
+        <span>Default zoom for new sheets</span>
+        <select className="xl-input w-48" value={s.defaultZoom} onChange={(e) => save({ defaultZoom: +e.target.value })} data-testid="opt-zoom">
+          {[50, 75, 90, 100, 110, 125, 150, 175, 200].map((z) => (
+            <option key={z} value={z}>{z}%</option>
+          ))}
+        </select>
+        <span>Recent files</span>
+        <span>
+          {s.recentFiles.length} remembered
+          <button className="xl-btn !min-w-0 ml-3" onClick={() => save({ recentFiles: [] })}>Clear list</button>
+        </span>
+      </div>
+      <p className="mt-6 text-[12px] opacity-70">
+        Font and zoom apply to new workbooks and sheets. Settings are stored {fileAdapter().kind === 'tauri' ? 'in settings.json in the app configuration folder' : 'in this browser'}.
+      </p>
+      {saved && <p className="mt-2 text-[12px]" style={{ color: 'var(--accent)' }}>Saved.</p>}
     </div>
   );
 }

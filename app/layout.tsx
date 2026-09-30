@@ -1,4 +1,8 @@
 import type { Metadata, Viewport } from 'next';
+import '@fontsource/carlito/400.css';
+import '@fontsource/carlito/400-italic.css';
+import '@fontsource/carlito/700.css';
+import '@fontsource/carlito/700-italic.css';
 import './globals.css';
 
 export const metadata: Metadata = {

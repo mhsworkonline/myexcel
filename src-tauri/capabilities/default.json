@@ -1,14 +1,30 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window permissions",
+  "description": "Least-privilege permissions for the main window. User files are reachable only after the user picks them in a native dialog (the dialog plugin grants that exact path; persisted-scope remembers it for Recent files) or passes them at launch.",
   "windows": ["main"],
   "permissions": [
-    "core:default",
-    "dialog:default",
-    "fs:default",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:path:default",
+    "core:window:allow-set-title",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "dialog:allow-message",
+    "dialog:allow-ask",
     "fs:allow-read-file",
     "fs:allow-write-file",
-    { "identifier": "fs:scope", "allow": [{ "path": "**" }] }
+    "fs:allow-read-text-file",
+    "fs:allow-write-text-file",
+    "fs:allow-exists",
+    "fs:allow-mkdir",
+    "fs:allow-remove",
+    "fs:allow-rename",
+    {
+      "identifier": "fs:scope",
+      "allow": [{ "path": "$APPDATA" }, { "path": "$APPDATA/**" }, { "path": "$APPCONFIG" }, { "path": "$APPCONFIG/**" }]
+    }
   ]
 }

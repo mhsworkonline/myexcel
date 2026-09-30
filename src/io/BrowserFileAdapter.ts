@@ -1,4 +1,5 @@
-import type { FileAdapter, FileTypeFilter, OpenedFile, RecentFile, SavedFile } from './FileAdapter';
+import { clearAutosave, readAutosave, writeAutosave } from './autosave';
+import { AppSettings, DEFAULT_SETTINGS, FileAdapter, FileTypeFilter, OpenedFile, RecentFile, RecoveryRecord, SavedFile } from './FileAdapter';
 
 interface FsHandle {
   name: string;
@@ -13,7 +14,7 @@ type PickerWindow = Window & {
   showSaveFilePicker?: (o: unknown) => Promise<FsHandle>;
 };
 
-const RECENT_KEY = 'myexcel.recent';
+const SETTINGS_KEY = 'myexcel.settings';
 
 function toAccept(filters: FileTypeFilter[]) {
   return filters.map((f) => ({ description: f.description, accept: { [f.mime]: f.extensions.map((e) => '.' + e) } }));
@@ -90,20 +91,49 @@ export class BrowserFileAdapter implements FileAdapter {
   }
 
   async recentFiles(): Promise<RecentFile[]> {
-    try {
-      return JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]');
-    } catch {
-      return [];
-    }
+    return (await this.loadSettings()).recentFiles;
   }
 
   async addRecent(entry: RecentFile): Promise<void> {
+    const s = await this.loadSettings();
+    s.recentFiles = [entry, ...s.recentFiles.filter((e) => e.name !== entry.name)].slice(0, 20);
+    await this.saveSettings(s);
+  }
+
+  async loadSettings(): Promise<AppSettings> {
     try {
-      const list = (await this.recentFiles()).filter((e) => e.name !== entry.name);
-      list.unshift(entry);
-      localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 20)));
+      const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}');
+      // migrate the pre-settings keys
+      const legacyTheme = localStorage.getItem('myexcel.theme');
+      const legacyRecent = localStorage.getItem('myexcel.recent');
+      return {
+        ...DEFAULT_SETTINGS,
+        ...(legacyTheme ? { theme: legacyTheme } : {}),
+        ...(legacyRecent ? { recentFiles: JSON.parse(legacyRecent) } : {}),
+        ...raw,
+      };
+    } catch {
+      return { ...DEFAULT_SETTINGS };
+    }
+  }
+
+  async saveSettings(s: AppSettings): Promise<void> {
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
     } catch {
       /* storage unavailable */
     }
+  }
+
+  async writeRecovery(rec: RecoveryRecord): Promise<void> {
+    await writeAutosave(rec as Parameters<typeof writeAutosave>[0]);
+  }
+
+  async readRecovery(): Promise<RecoveryRecord | null> {
+    return readAutosave();
+  }
+
+  async clearRecovery(): Promise<void> {
+    await clearAutosave();
   }
 }

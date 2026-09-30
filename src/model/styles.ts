@@ -56,6 +56,15 @@ export interface CellStyle {
 export const DEFAULT_FONT = 'Calibri';
 export const DEFAULT_FONT_SIZE = 11;
 
+// Font used for cells without an explicit font in the *current* workbook (its Normal style).
+let docFont = DEFAULT_FONT;
+export function setDocDefaultFont(name: string | undefined): void {
+  docFont = name || DEFAULT_FONT;
+}
+export function docDefaultFont(): string {
+  return docFont;
+}
+
 export type StylePatch = { [K in keyof CellStyle]?: CellStyle[K] | null };
 
 function canonicalKey(s: CellStyle): string {

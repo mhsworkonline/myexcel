@@ -7,23 +7,58 @@
     "frontendDist": "../out",
     "devUrl": "http://localhost:3100",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build:static"
+    "beforeBuildCommand": "npm run build"
   },
   "app": {
+    "withGlobalTauri": false,
     "windows": [
-      { "label": "main", "title": "MyExcel", "width": 1400, "height": 880, "minWidth": 800, "minHeight": 500 }
+      {
+        "label": "main",
+        "title": "MyExcel",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 900,
+        "minHeight": 600,
+        "center": true,
+        "dragDropEnabled": false,
+        "zoomHotkeysEnabled": false
+      }
     ],
-    "security": { "csp": null }
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' data: blob:",
+        "font-src": "'self'",
+        "connect-src": "ipc: http://ipc.localhost",
+        "object-src": "'none'",
+        "base-uri": "'none'",
+        "form-action": "'none'",
+        "frame-src": "'none'",
+        "worker-src": "'none'",
+        "media-src": "'none'",
+        "manifest-src": "'none'"
+      },
+      "devCsp": null,
+      "freezePrototype": false
+    }
   },
   "bundle": {
     "active": true,
-    "targets": "all",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.ico", "icons/icon.png"],
+    "targets": ["nsis", "msi"],
+    "publisher": "MyExcel",
+    "shortDescription": "Local-first spreadsheet",
+    "longDescription": "MyExcel is a local-first spreadsheet. Files are stored only on this computer.",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico", "icons/icon.png"],
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper" }
+    },
     "fileAssociations": [
-      { "ext": ["xlsx", "xlsm"], "name": "Excel Workbook", "description": "Excel Workbook", "role": "Editor", "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
-      { "ext": ["xls"], "name": "Excel 97-2003 Workbook", "description": "Excel 97-2003 Workbook", "role": "Viewer" },
-      { "ext": ["csv", "tsv"], "name": "CSV", "description": "Comma separated values", "role": "Editor", "mimeType": "text/csv" },
-      { "ext": ["ods"], "name": "OpenDocument Spreadsheet", "description": "OpenDocument Spreadsheet", "role": "Editor" }
+      { "ext": ["xlsx", "xlsm"], "name": "MyExcel.Workbook", "description": "Excel Workbook", "role": "Editor", "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+      { "ext": ["xls"], "name": "MyExcel.Workbook97", "description": "Excel 97-2003 Workbook", "role": "Viewer", "mimeType": "application/vnd.ms-excel" },
+      { "ext": ["csv"], "name": "MyExcel.CSV", "description": "CSV (Comma delimited)", "role": "Editor", "mimeType": "text/csv" },
+      { "ext": ["ods"], "name": "MyExcel.ODS", "description": "OpenDocument Spreadsheet", "role": "Editor", "mimeType": "application/vnd.oasis.opendocument.spreadsheet" }
     ]
   }
 }

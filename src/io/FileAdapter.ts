@@ -24,6 +24,27 @@ export interface RecentFile {
   opened: number;
 }
 
+/** User preferences persisted by the adapter (localStorage on the web, settings.json on desktop). */
+export interface AppSettings {
+  theme: 'light' | 'dark';
+  /** Zoom (%) for new workbooks and sheets. */
+  defaultZoom: number;
+  /** Font for new workbooks. */
+  defaultFont: string;
+  recentFiles: RecentFile[];
+}
+
+export const DEFAULT_SETTINGS: AppSettings = { theme: 'light', defaultZoom: 100, defaultFont: 'Calibri', recentFiles: [] };
+
+/** Crash-recovery snapshot of the open workbook. */
+export interface RecoveryRecord {
+  fileName: string;
+  /** Path/handle of the file the snapshot belongs to, when it has one on disk. */
+  path?: string;
+  savedAt: number;
+  data: unknown; // SerializedWorkbook
+}
+
 export interface FileAdapter {
   readonly kind: 'browser' | 'tauri';
   open(filters: FileTypeFilter[]): Promise<OpenedFile | null>;
@@ -33,6 +54,11 @@ export interface FileAdapter {
   recentFiles(): Promise<RecentFile[]>;
   openRecent?(entry: RecentFile): Promise<OpenedFile | null>;
   addRecent(entry: RecentFile): Promise<void>;
+  loadSettings(): Promise<AppSettings>;
+  saveSettings(s: AppSettings): Promise<void>;
+  writeRecovery(rec: RecoveryRecord): Promise<void>;
+  readRecovery(): Promise<RecoveryRecord | null>;
+  clearRecovery(): Promise<void>;
 }
 
 export const FILTERS: Record<string, FileTypeFilter> = {

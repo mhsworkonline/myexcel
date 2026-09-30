@@ -1,5 +1,5 @@
 // Canvas text measurement shared by the grid renderer and autofit.
-import { CellStyle, DEFAULT_FONT, DEFAULT_FONT_SIZE } from '../model/styles';
+import { CellStyle, DEFAULT_FONT_SIZE, docDefaultFont } from '../model/styles';
 
 let ctx: CanvasRenderingContext2D | null = null;
 function getCtx(): CanvasRenderingContext2D | null {
@@ -11,7 +11,7 @@ function getCtx(): CanvasRenderingContext2D | null {
 }
 
 export function fontFamily(name: string | undefined): string {
-  const n = name || DEFAULT_FONT;
+  const n = name || docDefaultFont();
   const fallbacks = '"Carlito", "Calibri", "Segoe UI", Arial, sans-serif';
   return `"${n}", ${fallbacks}`;
 }

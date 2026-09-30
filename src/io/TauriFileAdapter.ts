@@ -1,7 +1,7 @@
-// Desktop file adapter: native open/save dialogs and direct filesystem access via Tauri v2.
-import type { FileAdapter, FileTypeFilter, OpenedFile, RecentFile, SavedFile } from './FileAdapter';
-
-const RECENT_KEY = 'myexcel.recent.desktop';
+// Desktop file adapter (Tauri v2): native dialogs, direct filesystem access, and local
+// app-data storage for settings, recent files and crash-recovery snapshots.
+import type { AppSettings, FileAdapter, FileTypeFilter, OpenedFile, RecentFile, RecoveryRecord, SavedFile } from './FileAdapter';
+import { DEFAULT_SETTINGS } from './FileAdapter';
 
 function baseName(p: string): string {
   return p.split(/[\\/]/).pop() ?? p;
@@ -11,12 +11,50 @@ function toFilters(filters: FileTypeFilter[]) {
   return filters.map((f) => ({ name: f.description, extensions: f.extensions }));
 }
 
+async function fs() {
+  return import('@tauri-apps/plugin-fs');
+}
+
+async function paths() {
+  return import('@tauri-apps/api/path');
+}
+
+/** Write via a temp file + rename so a crash mid-write never leaves a truncated file. */
+async function atomicWriteText(path: string, text: string): Promise<void> {
+  const f = await fs();
+  const tmp = path + '.tmp';
+  await f.writeTextFile(tmp, text);
+  try {
+    if (await f.exists(path)) await f.remove(path);
+  } catch {
+    /* ignore */
+  }
+  await f.rename(tmp, path);
+}
+
 export class TauriFileAdapter implements FileAdapter {
   readonly kind = 'tauri' as const;
+  private settingsCache: AppSettings | null = null;
+
+  private async configFile(): Promise<string> {
+    const p = await paths();
+    const dir = await p.appConfigDir();
+    const f = await fs();
+    if (!(await f.exists(dir))) await f.mkdir(dir, { recursive: true });
+    return p.join(dir, 'settings.json');
+  }
+
+  private async recoveryFile(): Promise<string> {
+    const p = await paths();
+    const dir = await p.join(await p.appDataDir(), 'recovery');
+    const f = await fs();
+    if (!(await f.exists(dir))) await f.mkdir(dir, { recursive: true });
+    return p.join(dir, 'snapshot.json');
+  }
 
   async readPath(path: string): Promise<OpenedFile> {
-    const { readFile } = await import('@tauri-apps/plugin-fs');
-    const bytes = await readFile(path);
+    const f = await fs();
+    const bytes = await f.readFile(path);
     return { name: baseName(path), data: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, handle: path };
   }
 
@@ -28,11 +66,12 @@ export class TauriFileAdapter implements FileAdapter {
   }
 
   private async write(path: string, data: Uint8Array | string): Promise<void> {
-    const fs = await import('@tauri-apps/plugin-fs');
-    if (typeof data === 'string') await fs.writeTextFile(path, data);
-    else await fs.writeFile(path, data);
+    const f = await fs();
+    if (typeof data === 'string') await f.writeTextFile(path, data);
+    else await f.writeFile(path, data);
   }
 
+  /** Ctrl+S: write straight back to the file the workbook was opened from / last saved to. */
   async save(data: Uint8Array | string, handle: unknown, name: string): Promise<SavedFile | null> {
     if (typeof handle !== 'string') return null;
     try {
@@ -52,11 +91,7 @@ export class TauriFileAdapter implements FileAdapter {
   }
 
   async recentFiles(): Promise<RecentFile[]> {
-    try {
-      return JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]');
-    } catch {
-      return [];
-    }
+    return (await this.loadSettings()).recentFiles;
   }
 
   async openRecent(entry: RecentFile): Promise<OpenedFile | null> {
@@ -69,21 +104,106 @@ export class TauriFileAdapter implements FileAdapter {
   }
 
   async addRecent(entry: RecentFile): Promise<void> {
+    const s = await this.loadSettings();
+    const key = (e: RecentFile) => (e.path ?? e.name).toLowerCase();
+    s.recentFiles = [entry, ...s.recentFiles.filter((e) => key(e) !== key(entry))].slice(0, 20);
+    await this.saveSettings(s);
+  }
+
+  async loadSettings(): Promise<AppSettings> {
+    if (this.settingsCache) return { ...this.settingsCache, recentFiles: [...this.settingsCache.recentFiles] };
+    let s: AppSettings = { ...DEFAULT_SETTINGS };
     try {
-      const list = (await this.recentFiles()).filter((e) => (e.path ?? e.name) !== (entry.path ?? entry.name));
-      list.unshift(entry);
-      localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 20)));
+      const f = await fs();
+      const file = await this.configFile();
+      if (await f.exists(file)) s = { ...DEFAULT_SETTINGS, ...JSON.parse(await f.readTextFile(file)) };
+    } catch {
+      /* corrupt or unreadable settings: fall back to defaults */
+    }
+    this.settingsCache = s;
+    return { ...s, recentFiles: [...s.recentFiles] };
+  }
+
+  async saveSettings(s: AppSettings): Promise<void> {
+    this.settingsCache = { ...s, recentFiles: [...s.recentFiles] };
+    await atomicWriteText(await this.configFile(), JSON.stringify(s, null, 2));
+  }
+
+  async writeRecovery(rec: RecoveryRecord): Promise<void> {
+    await atomicWriteText(await this.recoveryFile(), JSON.stringify(rec));
+  }
+
+  async readRecovery(): Promise<RecoveryRecord | null> {
+    try {
+      const f = await fs();
+      const file = await this.recoveryFile();
+      if (!(await f.exists(file))) return null;
+      return JSON.parse(await f.readTextFile(file)) as RecoveryRecord;
+    } catch {
+      return null;
+    }
+  }
+
+  async clearRecovery(): Promise<void> {
+    try {
+      const f = await fs();
+      const file = await this.recoveryFile();
+      if (await f.exists(file)) await f.remove(file);
     } catch {
       /* ignore */
     }
   }
 }
 
-/** Wire native menus and the startup file (file association) to the app. */
-export async function installDesktopBridge(handlers: Record<string, () => void>, openPath: (p: string) => Promise<void>): Promise<void> {
+export interface DesktopBridgeOptions {
+  handlers: Record<string, () => void>;
+  openPath: (p: string) => Promise<void>;
+  /** Called on window close when there are unsaved changes; resolves true when it is OK to close. */
+  confirmClose: () => Promise<boolean>;
+  /** Called when the window really closes (clean up recovery etc.). */
+  beforeExit: () => Promise<void>;
+  subscribeTitle: (set: (title: string) => void) => void;
+}
+
+/** Wire native menus, the launch file (file association), close prompt and window title. */
+export async function installDesktopBridge(o: DesktopBridgeOptions): Promise<void> {
   const { listen } = await import('@tauri-apps/api/event');
   const { invoke } = await import('@tauri-apps/api/core');
-  await listen<string>('menu', (e) => handlers[e.payload]?.());
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  const win = getCurrentWindow();
+  await listen<string>('menu', (e) => o.handlers[e.payload]?.());
+  let closing = false;
+  await win.onCloseRequested(async (event) => {
+    event.preventDefault();
+    if (closing) return;
+    closing = true;
+    try {
+      if (await o.confirmClose()) {
+        await o.beforeExit();
+        await win.destroy();
+      }
+    } finally {
+      closing = false;
+    }
+  });
+  let lastTitle = '';
+  o.subscribeTitle((t) => {
+    if (t !== lastTitle) {
+      lastTitle = t;
+      win.setTitle(t).catch(() => undefined);
+    }
+  });
   const startup = await invoke<string | null>('startup_file');
-  if (startup) await openPath(startup);
+  if (startup) await o.openPath(startup);
+}
+
+export async function nativeClipboardRead(): Promise<{ html: string; text: string }> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  const r = await invoke<{ html?: string | null; text?: string | null }>('clipboard_read');
+  return { html: r.html ?? '', text: r.text ?? '' };
+}
+
+export async function nativeClipboardWrite(html: string, text: string): Promise<void> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('clipboard_write', { html, text });
 }

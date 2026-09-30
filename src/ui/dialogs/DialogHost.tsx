@@ -36,6 +36,7 @@ import {
 } from './data';
 import { CustomFilterDialog, FindReplaceDialog, PasteSpecialDialog, SortDialog, Top10Dialog } from './FindSortPaste';
 import { FormatCellsDialog } from './FormatCells';
+import { ShortcutsDialog } from './Shortcuts';
 import { FunctionArgsDialog, HyperlinkDialog, InsertFunctionDialog, NoteDialog } from './misc';
 
 type P = { props: Record<string, unknown> };
@@ -82,6 +83,7 @@ const REGISTRY: Record<string, ComponentType<P>> = {
   symbol: SymbolDialog,
   stats: StatsDialog,
   evaluate: EvaluateDialog,
+  shortcuts: ShortcutsDialog,
 };
 
 /** Later phases register additional dialogs here. */

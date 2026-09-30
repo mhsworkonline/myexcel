@@ -180,9 +180,27 @@ export function doCopy(cut: boolean): ClipPayload | null {
 }
 
 /** Ribbon Copy button: uses the async clipboard API where available. */
+/** Platform clipboard (desktop): reads/writes CF_HTML + text directly, no browser permission prompts. */
+export interface NativeClipboard {
+  read(): Promise<{ html: string; text: string }>;
+  write(html: string, text: string): Promise<void>;
+}
+let native: NativeClipboard | null = null;
+export function setNativeClipboard(c: NativeClipboard | null): void {
+  native = c;
+}
+
 export async function copyToSystem(cut: boolean): Promise<void> {
   const p = doCopy(cut);
   if (!p) return;
+  if (native) {
+    try {
+      await native.write(buildHtml(p), p.text);
+      return;
+    } catch {
+      /* fall through to the web clipboard */
+    }
+  }
   try {
     if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
       await navigator.clipboard.write([
@@ -234,6 +252,15 @@ export function onPasteEvent(e: ClipboardEvent): void {
 export async function pasteFromSystem(opts: PasteOptions = DEFAULT_PASTE): Promise<void> {
   let html = '';
   let text = '';
+  if (native) {
+    try {
+      const r = await native.read();
+      pasteFrom(r, opts);
+      return;
+    } catch {
+      /* fall through */
+    }
+  }
   try {
     if (navigator.clipboard?.read) {
       const items = await navigator.clipboard.read();

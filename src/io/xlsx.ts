@@ -166,9 +166,12 @@ function readStyle(cell: ExcelJS.Cell | ExcelJS.Row | ExcelJS.Column): CellStyle
   return s;
 }
 
+let writeDocFont = DEFAULT_FONT;
+
 function writeStyle(target: ExcelJS.Cell | ExcelJS.Column | ExcelJS.Row, s: CellStyle): void {
   const font: Partial<ExcelJS.Font> = {};
   if (s.fontName) font.name = s.fontName;
+  else if (writeDocFont !== DEFAULT_FONT) font.name = writeDocFont;
   if (s.fontSize) font.size = s.fontSize;
   if (s.bold) font.bold = true;
   if (s.italic) font.italic = true;
@@ -176,7 +179,7 @@ function writeStyle(target: ExcelJS.Cell | ExcelJS.Column | ExcelJS.Row, s: Cell
   if (s.strike) font.strike = true;
   if (s.fontColor) font.color = argb(s.fontColor);
   if (s.vertAlign) font.vertAlign = s.vertAlign;
-  if (Object.keys(font).length) target.font = { name: DEFAULT_FONT, size: DEFAULT_FONT_SIZE, ...font } as ExcelJS.Font;
+  if (Object.keys(font).length) target.font = { name: writeDocFont, size: DEFAULT_FONT_SIZE, ...font } as ExcelJS.Font;
   if (s.fillColor) {
     target.fill = s.patternType
       ? { type: 'pattern', pattern: s.patternType as ExcelJS.FillPatterns, fgColor: argb(s.fillColor), bgColor: argb(s.patternColor ?? '#FFFFFF') }
@@ -668,6 +671,7 @@ function cfToExcel(cf: CFRule, tl: string): Record<string, unknown> | null {
 
 export async function writeXlsx(wb: Workbook, getValue: ValueReader): Promise<ArrayBuffer> {
   const x = new ExcelJS.Workbook();
+  writeDocFont = wb.props.defaultFont ?? DEFAULT_FONT;
   x.creator = wb.props.author ?? 'MyExcel';
   x.created = wb.props.created ? new Date(wb.props.created) : new Date();
   x.modified = new Date();
@@ -721,6 +725,7 @@ export async function writeXlsx(wb: Workbook, getValue: ValueReader): Promise<Ar
           else xc.value = cell.v;
         } else if (cell.link) xc.value = { text: cell.link, hyperlink: cell.link };
         if (cell.s) writeStyle(xc, styles.get(cell.s));
+        else if (writeDocFont !== DEFAULT_FONT) writeStyle(xc, {});
         if (cell.note) xc.note = (cell.note.author ? `${cell.note.author}:\n` : '') + cell.note.text;
       }
     }

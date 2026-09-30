@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { FMT, formatValue } from '../../model/numfmt';
 import { primaryRange } from '../../model/selection';
+import { docDefaultFont } from '../../model/styles';
 import { copyToSystem, pasteFromSystem, DEFAULT_PASTE, PasteOptions } from '../../state/actions/clipboard';
 import { clearSelection, protectedAlert } from '../../state/actions/edit';
 import { fillDirection, flashFill } from '../../state/actions/fill';
@@ -482,7 +483,7 @@ export function HomeTab() {
       <Group label="Font" launcher={() => openDialog('formatCells', { tab: 'Font' })}>
         <Col>
           <Row>
-            <Combo value={st.fontName ?? 'Calibri'} options={FONTS} onCommit={(v) => applyStyle({ fontName: v }, 'Font')} width={128} title="Font" testId="font-name" renderOption={(o) => <span style={{ fontFamily: `"${o}"`, fontSize: 13 }}>{o}</span>} />
+            <Combo value={st.fontName ?? docDefaultFont()} options={FONTS} onCommit={(v) => applyStyle({ fontName: v }, 'Font')} width={128} title="Font" testId="font-name" renderOption={(o) => <span style={{ fontFamily: `"${o}"`, fontSize: 13 }}>{o}</span>} />
             <Combo value={String(st.fontSize ?? 11)} options={FONT_SIZES.map(String)} onCommit={(v) => { const n = parseFloat(v); if (n > 0 && n <= 409) applyStyle({ fontSize: n }, 'Font Size'); }} width={46} title="Font Size" testId="font-size" />
             <SmallButton icon={<AArrowUp size={16} />} title="Increase Font Size (Ctrl+Shift+>)" onClick={() => growFont(1)} />
             <SmallButton icon={<AArrowDown size={16} />} title="Decrease Font Size (Ctrl+Shift+<)" onClick={() => growFont(-1)} />

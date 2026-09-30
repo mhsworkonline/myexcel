@@ -13,6 +13,7 @@ import {
   TIME_FORMATS,
 } from '../../model/numfmt';
 import type { BorderEdge, BorderStyleName, CellStyle, HAlign, StylePatch, VAlign } from '../../model/styles';
+import { docDefaultFont } from '../../model/styles';
 import { applyStyleFn, autoRowHeights, FONT_SIZES } from '../../state/actions/format';
 import { S, transact } from '../../state/store';
 import { getComputed } from '../../state/values';
@@ -354,10 +355,10 @@ export function FormatCellsDialog({ props }: { props: Record<string, unknown> })
             <div className="flex gap-3">
               <div className="flex-1">
                 <div>Font:</div>
-                <input className="xl-input w-full" value={eff.fontName ?? 'Calibri'} onChange={(e) => set({ fontName: e.target.value })} />
+                <input className="xl-input w-full" value={eff.fontName ?? docDefaultFont()} onChange={(e) => set({ fontName: e.target.value })} />
                 <div className="xl-list h-[110px] mt-1">
                   {FONTS.map((f) => (
-                    <div key={f} className={(eff.fontName ?? 'Calibri') === f ? 'xl-list-sel' : ''} style={{ fontFamily: `"${f}"` }} onClick={() => set({ fontName: f })}>{f}</div>
+                    <div key={f} className={(eff.fontName ?? docDefaultFont()) === f ? 'xl-list-sel' : ''} style={{ fontFamily: `"${f}"` }} onClick={() => set({ fontName: f })}>{f}</div>
                   ))}
                 </div>
               </div>
@@ -407,7 +408,7 @@ export function FormatCellsDialog({ props }: { props: Record<string, unknown> })
               </fieldset>
               <fieldset className="xl-fieldset flex-1">
                 <legend>Preview</legend>
-                <div className="h-14 flex items-center justify-center overflow-hidden" style={{ fontFamily: `"${eff.fontName ?? 'Calibri'}", Carlito, sans-serif`, fontSize: Math.min(28, (eff.fontSize ?? 11) * 1.33), fontWeight: eff.bold ? 700 : 400, fontStyle: eff.italic ? 'italic' : 'normal', textDecoration: [eff.underline ? 'underline' : '', eff.strike ? 'line-through' : ''].join(' '), color: eff.fontColor ?? 'var(--text)' }}>
+                <div className="h-14 flex items-center justify-center overflow-hidden" style={{ fontFamily: `"${eff.fontName ?? docDefaultFont()}", Carlito, sans-serif`, fontSize: Math.min(28, (eff.fontSize ?? 11) * 1.33), fontWeight: eff.bold ? 700 : 400, fontStyle: eff.italic ? 'italic' : 'normal', textDecoration: [eff.underline ? 'underline' : '', eff.strike ? 'line-through' : ''].join(' '), color: eff.fontColor ?? 'var(--text)' }}>
                   AaBbCcYyZz
                 </div>
               </fieldset>

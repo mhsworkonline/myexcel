@@ -5,6 +5,7 @@ import { History, Tx } from '../model/commands';
 import { Selection, singleSel } from '../model/selection';
 import type { Sheet } from '../model/sheet';
 import { Workbook } from '../model/workbook';
+import { setDocDefaultFont } from '../model/styles';
 
 export type RibbonTab = 'File' | 'Home' | 'Insert' | 'Page Layout' | 'Formulas' | 'Data' | 'Review' | 'View';
 
@@ -72,6 +73,8 @@ export interface AppState {
   ribbonTab: RibbonTab;
   ribbonCollapsed: boolean;
   backstage: boolean;
+  /** Page the File backstage opens on (e.g. "open" for Open Recent). */
+  backstagePage: string | null;
   dialog: DialogState | null;
   menu: MenuState | null;
   theme: 'light' | 'dark';
@@ -112,6 +115,7 @@ export const useStore = create<AppState>(() => ({
   ribbonTab: 'Home',
   ribbonCollapsed: false,
   backstage: false,
+  backstagePage: null,
   dialog: null,
   menu: null,
   theme: 'light',
@@ -214,6 +218,7 @@ function restoreUi(ui: UiSnap | undefined): void {
 /** Replace the whole workbook (open file / new). */
 export function loadWorkbook(wb: Workbook, file: Partial<FileState>): void {
   const st = S();
+  setDocDefaultFont(wb.props.defaultFont);
   st.engine.dispose();
   const engine = new Engine(wb);
   engine.attachIfNeeded();

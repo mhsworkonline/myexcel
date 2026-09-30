@@ -284,6 +284,10 @@ export function handleGridKey(e: KeyboardEvent): boolean {
   }
 
   if (!ctrl) return false;
+  if (alt && (key === 'v' || key === 'V')) {
+    openDialog('pasteSpecial');
+    return true;
+  }
   // ---- Ctrl shortcuts ----
   const k = key.toLowerCase();
   if (shift) {

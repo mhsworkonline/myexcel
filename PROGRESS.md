@@ -42,3 +42,20 @@ Resume guide: `npm install`, `npm run build`, `./scripts/restart.sh` (serves :31
 ## Finish  ✅
 - [x] 200k-row scroll check (`scripts/scroll-check.mjs`): median 16.7 ms / max 16.8 ms per frame
 - [x] README, KNOWN_GAPS.md
+
+## Desktop app (Tauri v2, Windows) — second pass
+Prerequisites checked: Rust 1.96.1 MSVC ✓, VS 2022 Build Tools ✓, WebView2 154 ✓, Node 22.16 ✓.
+- [x] Audit existing `src-tauri` / `TauriFileAdapter` and finish it
+- [x] Static export for all builds; `npm start` serves `out/`; web dev/build/test/smoke still pass
+- [x] Window 1440×900, min 900×600; icons; scripts `tauri:dev`, `tauri:build`
+- [x] TauriFileAdapter: native Open/Save/Save As, Ctrl+S in place (.xlsx/.csv/.tsv/.ods), .xls read-only → Save As
+- [x] Recent files (settings.json in app dir) shown in File > Open, File backstage, native "Open Recent..."
+- [x] Recovery snapshots every 30 s while dirty in app data dir (web: IndexedDB via adapter), restore offer after crash
+- [x] Settings (theme, default zoom, default font, recent files) in app config dir; File > Options page
+- [x] File associations (.xlsx/.xlsm, .xls, .csv, .ods) + opening the file passed at launch (scope granted in Rust)
+- [x] Native Save/Don't Save/Cancel prompt on close
+- [x] Strict CSP, least-privilege capabilities, persisted scope for picked files, no network plugins, fonts bundled, telemetry off
+- [x] Native menu (File/Edit/View/Help) → same commands as ribbon; WebView2 browser shortcuts disabled
+- [x] Native window title mirrors file name + save status; in-app title row kept
+- [x] Native clipboard (CF_HTML + text) for ribbon/menu copy/paste; Ctrl+C/V via webview events
+- [x] Release build + NSIS/MSI installers; `scripts/desktop-check.mjs` passes 15/15 against the packaged exe (launch-file open, in-place save, settings/recent, 30 s recovery + crash offer, CF_HTML clipboard, title, CSP, close prompt)

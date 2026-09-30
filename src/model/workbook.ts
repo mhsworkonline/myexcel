@@ -25,6 +25,8 @@ export interface WorkbookProps {
   author?: string;
   created?: number;
   modified?: number;
+  /** Normal-style font of this workbook when it differs from Calibri (from app settings). */
+  defaultFont?: string;
 }
 
 export class Workbook {
@@ -37,9 +39,11 @@ export class Workbook {
   /** Increments on every change; used for dirty tracking. */
   rev = 0;
 
-  static createDefault(): Workbook {
+  static createDefault(opts: { defaultFont?: string; zoom?: number } = {}): Workbook {
     const wb = new Workbook();
     const s = new Sheet('Sheet1');
+    if (opts.zoom) s.zoom = opts.zoom;
+    if (opts.defaultFont && opts.defaultFont !== 'Calibri') wb.props.defaultFont = opts.defaultFont;
     wb.sheets.push(s);
     wb.activeSheetId = s.id;
     return wb;

@@ -468,14 +468,8 @@ export function ViewTab() {
 }
 
 export function setTheme(t: 'light' | 'dark'): void {
-  setState({ theme: t });
-  document.documentElement.dataset.theme = t;
-  try {
-    localStorage.setItem('myexcel.theme', t);
-  } catch {
-    /* ignore */
-  }
-  bump();
+  // applied immediately; persisted to settings (settings.json on desktop, localStorage on web)
+  import('../../state/settings').then((m) => m.setThemeSetting(t));
 }
 
 export function TableDesignTab() {

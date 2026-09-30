@@ -4,26 +4,38 @@ A local-first, single-user spreadsheet that looks and works like current Microso
 
 ## Setup
 
-Requirements: Node.js 20+ (tested on 22). For the desktop app you also need Rust (stable) and the [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/).
+Requirements: Node.js 20+ (tested on 22). For the Windows desktop app: Rust stable with the MSVC toolchain, Visual Studio 2022 Build Tools (Desktop C++), and the WebView2 runtime (built into Windows 10/11).
 
 ```bash
 npm install
-npx playwright install chromium   # only needed for the end-to-end smoke test
+npx playwright install chromium   # only for the end-to-end smoke test
 ```
 
 ## Run
 
 | Command | What it does |
 |---|---|
-| `npm run dev` | Development server on http://localhost:3100 |
-| `npm run build` then `npm start` | Production build/serve on http://localhost:3100 |
+| `npm run dev` | Web development server on http://localhost:3100 |
+| `npm run build` | Static export of the whole app to `out/` (used by both web and desktop) |
+| `npm start` | Serve `out/` locally on http://localhost:3100 |
 | `npm run typecheck` | TypeScript check |
-| `npm test` | Unit tests: xlsx/csv round-trip and undo/redo (~2 s) |
-| `npm run e2e` | Playwright smoke test: open, edit, format, sort, undo, save (starts `npm start` if needed) |
-| `npm run desktop:dev` | Tauri desktop app against the dev server |
-| `npm run desktop:build` | Static export (`out/`) + native installer (MSI/NSIS on Windows, dmg on macOS, deb/AppImage on Linux) |
+| `npm test` | Unit tests: xlsx/csv round-trip and undo/redo |
+| `npm run e2e` | Playwright smoke test: open, edit, format, sort, undo, save |
+| `npm run tauri:dev` | Desktop app against the dev server (hot reload) |
+| `npm run tauri:build` | Release desktop build + installers in `src-tauri/target/release/bundle/` (`nsis/*.exe`, `msi/*.msi`) |
 
-`node scripts/scroll-check.mjs` is a one-time performance check that opens a generated 200,000-row workbook and reports scroll frame times (server must be running).
+One-off checks (not part of the test suite): `node scripts/scroll-check.mjs` (200k-row scroll performance, needs `npm start`) and `node scripts/desktop-check.mjs` (drives the packaged desktop app over WebView2 remote debugging).
+
+## Desktop app (Windows)
+
+Everything stays on your computer; the app makes no network requests.
+
+- **Files:** native Open/Save dialogs. Ctrl+S writes straight back to the opened file (`.xlsx`, `.csv`, `.tsv`, `.ods`); `.xls` opens read-only and saves as `.xlsx`. Double-clicking an associated file (`.xlsx`, `.xls`, `.csv`, `.ods`) opens it in MyExcel.
+- **Where data lives** (`%APPDATA%\app.myexcel.desktop\`): `settings.json` holds theme, default zoom, default font and recent files; `recovery\snapshot.json` holds the crash-recovery copy (written every 30 s while there are unsaved changes, removed when you save or discard).
+- **Recent files:** File > Open (and the File tab's Home page), or the menu's File > Open Recent.
+- **Options:** File tab > Options (theme, default font, default zoom).
+- **Closing** with unsaved changes asks Save / Don't Save / Cancel.
+- **Clipboard:** copy/paste exchanges formatted data with Excel in both directions.
 
 ## Features
 
